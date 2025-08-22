@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบติดตามงานวิชาคณิตศาสตร์ (2568)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- SheetJS library for Excel export/import -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+        }
+        .table-container {
+            max-height: 70vh; /* Limit table height to allow scrolling */
+            overflow: auto;
+        }
+        .table-cell-status {
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .table-cell-status:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+        .square-box {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .modal {
+            transition: opacity 0.25s ease;
+        }
+        .modal-content {
+            transition: transform 0.25s ease;
+        }
+        .status-A { background-color: #a7f3d0; color: #065f46; } /* Green */
+        .status-B { background-color: #bfdbfe; color: #1e40af; } /* Blue */
+        .status-C { background-color: #fef08a; color: #854d0e; } /* Yellow */
+        .status-D { background-color: #e9d5ff; color: #581c87; } /* Purple */
+        .status-none { background-color: #fecaca; color: #991b1b; } /* Red */
+        .status-progress { background-color: #e5e7eb; color: #1f2937; } /* Gray for numeric scores */
+        
+        .toggle-btn-active { background-color: #4f46e5; color: white; }
+        .toggle-btn-inactive { background-color: #d1d5db; color: #4b5563; }
+
+        #assignmentTooltip {
+            position: absolute;
+            display: none;
+            padding: 10px;
+            background-color: #333;
+            color: white;
+            border-radius: 6px;
+            z-index: 100;
+            pointer-events: none;
+        }
+        .status-btn-square {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .bulk-grade-btn {
+            width: 40px;
+            height: 40px;
+            font-size: 0.875rem;
+        }
+        .bulk-grade-btn.selected {
+            outline: 2px solid #2563eb;
+            outline-offset: 2px;
+        }
+        .class-tab {
+            transition: all 0.2s ease-in-out;
+        }
+        .class-tab.active {
+            background-color: #4f46e5;
+            color: white;
+            border-color: #4f46e5;
+        }
+        .editable:hover {
+            background-color: #f0f9ff;
+            cursor: pointer;
+        }
+        .collapsible-content {
+            max-height: 1000px; /* Or a large enough value */
+            transition: max-height 0.5s ease-in-out, margin-top 0.5s ease-in-out, padding 0.5s ease-in-out;
+            overflow: hidden;
+        }
+        .collapsed .collapsible-content {
+            max-height: 0;
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
+        .collapsed .collapse-icon {
+            transform: rotate(180deg);
+        }
+        .overdue-header {
+            background-color: #fee2e2; /* Light red for overdue assignments */
+        }
+        .toast-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            color: white;
+            font-weight: bold;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .toast-notification.show {
+            opacity: 1;
+        }
+
+        #managementPanel > .flex, 
+        #columnPanel > .flex, 
+        #statusPanel > .flex {
+            transition: margin-bottom 0.5s ease-in-out;
+        }
+
+        #managementPanel, #columnPanel, #statusPanel {
+            transition: padding-top 0.5s ease-in-out, padding-bottom 0.5s ease-in-out;
+        }
+
+        #managementPanel.collapsed,
+        #columnPanel.collapsed,
+        #statusPanel.collapsed {
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+        }
+
+        #managementPanel.collapsed > .flex,
+        #columnPanel.collapsed > .flex,
+        #statusPanel.collapsed > .flex {
+            margin-bottom: 0;
+        }
+        /* Sticky header and column styles */
+        #gradebookTable thead th {
+            position: sticky;
+            top: 0;
+            z-index: 30; /* Header is above body */
+        }
+        #gradebookTable tbody td:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 20; /* Sticky column is above other cells but below header */
+        }
+        #gradebookTable thead th:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 40; /* Top-left corner is on top of everything */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <!-- Main Container -->
+    <div class="w-full p-4 sm:p-6 lg:p-8">
+        
+        <header class="mb-4">
+            <h1 id="mainTitle" class="editable text-3xl font-bold text-gray-700 rounded px-2 py-1">ระบบติดตามงานวิชาคณิตศาสตร์ (2568)</h1>
+            <p id="subTitle" class="editable text-gray-500 rounded px-2 py-1">ภาคเรียนที่ 1</p>
+        </header>
+
+        <!-- Class Tabs -->
+        <div class="mb-6">
+            <div id="classTabsContainer" class="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-2">
+                <!-- Class tabs will be rendered here -->
+            </div>
+        </div>
+
+        <div class="table-container bg-white rounded-lg shadow-md mb-6">
+            <table id="gradebookTable" class="text-sm text-left text-gray-600 w-full"></table>
+        </div>
+    
+        <!-- Control Panels Container -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div id="managementPanel" class="bg-white p-3 rounded-lg shadow-md">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-md font-semibold">เครื่องมือจัดการ:</h2>
+                    <button class="collapse-btn p-1 rounded-full hover:bg-gray-200">
+                        <svg class="collapse-icon w-5 h-5 text-gray-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                </div>
+                <div class="collapsible-content pt-2">
+                    <div class="flex flex-wrap gap-3 items-center">
+                        <button id="addStudentBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow">เพิ่มนักเรียน</button>
+                        <button id="addAssignmentBtn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow">เพิ่มงาน</button>
+                        <button id="addSpecialColumnBtn" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg shadow">เพิ่มคอลัมน์พิเศษ</button>
+                        <button id="viewSummaryBtn" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow">ดูสรุปงาน</button>
+                    </div>
+                     <div class="mt-4 border-t pt-3">
+                        <h3 class="text-sm font-semibold mb-2">นำเข้า/ส่งออก:</h3>
+                        <div class="flex flex-wrap gap-3 items-center">
+                            <button id="exportBtn" class="bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded-lg shadow">Export (สำรองข้อมูล)</button>
+                            <button id="importBtn" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg shadow">Import (กู้ข้อมูล)</button>
+                            <input type="file" id="importFile" class="hidden" accept=".xlsx, .xls">
+                            <button id="customImportBtn" class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-lg shadow">Import (ข้อมูลดิบ)</button>
+                            <input type="file" id="customImportFile" class="hidden" accept=".xlsx, .xls">
+                        </div>
+                    </div>
+                     <div class="mt-4 border-t pt-3">
+                        <h3 class="text-sm font-semibold mb-2">ตั้งค่าคะแนนเต็ม:</h3>
+                        <div class="flex items-center gap-4">
+                            <label for="assignmentScoreInput" class="font-medium">คะแนนเก็บ:</label>
+                            <input type="number" id="assignmentScoreInput" class="w-20 border border-gray-300 rounded-lg p-1 text-center">
+                        </div>
+                    </div>
+                    <div class="mt-4 border-t pt-3">
+                         <button id="clearDataBtn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow w-full">ล้างข้อมูลทั้งหมดในห้องนี้</button>
+                    </div>
+                </div>
+            </div>
+            <div id="columnPanel" class="bg-white p-3 rounded-lg shadow-md">
+                 <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-md font-semibold">จัดการคอลัมน์:</h2>
+                    <button class="collapse-btn p-1 rounded-full hover:bg-gray-200">
+                         <svg class="collapse-icon w-5 h-5 text-gray-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                </div>
+                <div id="columnToggleContainer" class="collapsible-content pt-2 flex flex-wrap gap-2 items-center">
+                    <button data-column="assignmentScore" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">คะแนนเก็บ</button>
+                    <button data-column="midterm" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">กลางภาค</button>
+                    <button data-column="final" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">ปลายภาค</button>
+                    <button data-column="totalScore" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">รวม</button>
+                    <button data-column="gpa" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">ผลการเรียน</button>
+                </div>
+            </div>
+             <div id="statusPanel" class="bg-white p-3 rounded-lg shadow-md lg:col-span-2">
+             <div class="flex justify-between items-center mb-2">
+                <h3 class="font-semibold text-md">คำอธิบายสถานะการส่งงาน:</h3>
+                <button class="collapse-btn p-1 rounded-full hover:bg-gray-200">
+                     <svg class="collapse-icon w-5 h-5 text-gray-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </button>
+            </div>
+            <div class="collapsible-content pt-2 flex flex-wrap gap-4 text-sm">
+                <span class="font-semibold status-A px-2 py-1 rounded-md">A: ส่งตรงเวลาและถูกต้อง</span>
+                <span class="font-semibold status-B px-2 py-1 rounded-md">B: ส่งตรงเวลาแต่ไม่ถูกต้อง</span>
+                <span class="font-semibold status-C px-2 py-1 rounded-md">C: ส่งช้าแต่ถูกต้อง</span>
+                <span class="font-semibold status-D px-2 py-1 rounded-md">D: ส่งช้าและไม่ถูกต้อง</span>
+                <span class="font-semibold status-none px-2 py-1 rounded-md">ยังไม่ส่ง</span>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="assignmentTooltip"></div>
+    <div id="gradeModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden opacity-0 z-50">
+        <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-sm p-6 transform -translate-y-10">
+            <h3 class="text-xl font-bold mb-2">แก้ไขสถานะการส่งงาน</h3>
+            <p>นักเรียน: <span id="modalStudentName" class="font-semibold"></span></p>
+            <p class="mb-4">งาน: <span id="modalAssignmentName" class="font-semibold"></span></p>
+            <div class="flex flex-wrap justify-center gap-2">
+                <button data-status="A" class="status-btn status-btn-square status-A text-lg font-bold rounded-lg shadow">A</button>
+                <button data-status="B" class="status-btn status-btn-square status-B text-lg font-bold rounded-lg shadow">B</button>
+                <button data-status="C" class="status-btn status-btn-square status-C text-lg font-bold rounded-lg shadow">C</button>
+                <button data-status="D" class="status-btn status-btn-square status-D text-lg font-bold rounded-lg shadow">D</button>
+                <button data-status="none" class="status-btn status-btn-square status-none text-xs font-bold rounded-lg shadow">ยังไม่ส่ง</button>
+            </div>
+            <div class="mt-4 border-t pt-4">
+                <label for="modalProgressScore" class="block text-sm font-medium text-gray-700">คะแนนความก้าวหน้า (ไม่คิดเกรด)</label>
+                <input type="number" id="modalProgressScore" class="mt-1 w-full text-center border-gray-300 rounded-lg p-2 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <div class="mt-6 text-right"><button id="closeGradeModalBtn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">ปิด</button></div>
+        </div>
+    </div>
+    <div id="inputModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden opacity-0 z-50">
+        <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-md p-6 transform -translate-y-10">
+            <h3 id="inputModalTitle" class="text-xl font-bold mb-2"></h3>
+            <p id="inputModalDesc" class="mb-4 text-gray-600"></p>
+            <input type="text" id="inputModalField" class="w-full border border-gray-300 rounded-lg p-2 mb-4">
+            <textarea id="inputModalTextarea" class="w-full border border-gray-300 rounded-lg p-2 mb-4" rows="5"></textarea>
+            <div class="flex justify-end gap-3">
+                <button id="inputModalCancelBtn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">ยกเลิก</button>
+                <button id="inputModalConfirmBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">ยืนยัน</button>
+            </div>
+        </div>
+    </div>
+    <div id="assignmentModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden opacity-0 z-50">
+        <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-lg p-6 transform -translate-y-10">
+            <h3 id="assignmentModalTitle" class="text-xl font-bold mb-4"></h3>
+            <form id="assignmentForm" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="sm:col-span-2"><label for="assignmentName" class="block mb-1 font-semibold">ชื่องาน</label><input type="text" id="assignmentName" class="w-full border rounded-lg p-2" required></div>
+                <div><label for="assignmentChapter" class="block mb-1 font-semibold">บทที่</label><input type="text" id="assignmentChapter" class="w-full border rounded-lg p-2"></div>
+                <div><label for="assignmentDate" class="block mb-1 font-semibold">วันที่มอบหมาย</label><input type="text" id="assignmentDate" class="w-full border rounded-lg p-2" placeholder="วว/ดด/ปปปป"></div>
+                <div><label for="daysToSubmit" class="block mb-1 font-semibold">กำหนดส่ง (วัน)</label><input type="number" id="daysToSubmit" class="w-full border rounded-lg p-2" value="7"></div>
+                <div><label for="assignmentQuantity" class="block mb-1 font-semibold">จำนวน</label><input type="number" id="assignmentQuantity" class="w-full border rounded-lg p-2"></div>
+                <div><label for="assignmentPage" class="block mb-1 font-semibold">หน้า</label><input type="text" id="assignmentPage" class="w-full border rounded-lg p-2"></div>
+            </form>
+            <div class="flex justify-end gap-3 mt-6">
+                <button id="assignmentModalCancelBtn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">ยกเลิก</button>
+                <button id="assignmentModalConfirmBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">บันทึก</button>
+            </div>
+        </div>
+    </div>
+    <div id="summaryModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden opacity-0 z-50">
+        <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-4xl p-6 transform -translate-y-10">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">สรุปรายการงานทั้งหมด</h3>
+                <button id="closeSummaryModalBtn" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            </div>
+            <div class="max-h-[70vh] overflow-y-auto">
+                <table class="w-full text-sm text-left text-gray-600">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-2">ที่</th><th class="px-4 py-2">บทที่</th><th class="px-4 py-2 w-1/2">ชื่องาน</th>
+                            <th class="px-4 py-2 text-center">จำนวน</th><th class="px-4 py-2 text-center">หน้า</th><th class="px-4 py-2">วันที่มอบหมาย</th><th class="px-4 py-2">กำหนดส่ง</th>
+                        </tr>
+                    </thead>
+                    <tbody id="summaryTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div id="bulkGradeModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden opacity-0 z-50">
+        <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 transform -translate-y-10">
+            <div class="flex justify-between items-start mb-4">
+                <h3 id="bulkGradeModalTitle" class="text-xl font-bold">ให้คะแนนงาน</h3>
+                <div class="flex items-center">
+                    <input type="checkbox" id="bulkGradeFilter" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" checked>
+                    <label for="bulkGradeFilter" class="ml-2 block text-sm text-gray-900">แสดงเฉพาะที่ยังไม่ส่ง</label>
+                </div>
+            </div>
+            <div class="max-h-[70vh] overflow-y-auto">
+                <table class="w-full text-sm text-left text-gray-600"><tbody id="bulkGradeTableBody"></tbody></table>
+            </div>
+            <div class="mt-6 text-right"><button id="closeBulkGradeModalBtn" class="bg-gray-300 hover:bg-gray-400 font-bold py-2 px-4 rounded-lg">ปิด</button></div>
+        </div>
+    </div>
+    <div id="studentGradeModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden opacity-0 z-50">
+        <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 transform -translate-y-10">
+             <div class="flex justify-between items-start mb-4">
+                <h3 id="studentGradeModalTitle" class="text-xl font-bold">ให้คะแนนนักเรียน</h3>
+                <div class="flex items-center">
+                    <input type="checkbox" id="studentGradeFilter" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" checked>
+                    <label for="studentGradeFilter" class="ml-2 block text-sm text-gray-900">แสดงเฉพาะที่ยังไม่ส่ง</label>
+                </div>
+            </div>
+            <div class="max-h-[70vh] overflow-y-auto">
+                <table class="w-full text-sm text-left text-gray-600"><tbody id="studentGradeTableBody"></tbody></table>
+            </div>
+            <div class="mt-6 text-right"><button id="closeStudentGradeModalBtn" class="bg-gray-300 hover:bg-gray-400 font-bold py-2 px-4 rounded-lg">ปิด</button></div>
+        </div>
+    </div>
+
+<script type="module">
+    // --- Firebase SDK Imports ---
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, onSnapshot, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyB_DjUyANiQMWnFSG7d71R_ANviYbrUMM8",
+            authDomain: "grading-system-a666b.firebaseapp.com",
+            projectId: "grading-system-a666b",
+            storageBucket: "grading-system-a666b.appspot.com",
+            messagingSenderId: "1008723501468",
+            appId: "1:1008723501468:web:d9736312e4f1da107ca859",
+            measurementId: "G-JSHX5M64R0"
+        };
+
+        // --- Firebase Initialization ---
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        setLogLevel('debug'); // For detailed logs
+        await signInAnonymously(auth);
+        
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-public-gradebook';
+        const gradebookDocRef = doc(db, "artifacts", appId, "public", "data", "gradebook", "main");
+
+        // --- CONFIGURATION ---
+        const GRADE_MULTIPLIER = { 'A': 1.0, 'B': 0.9, 'C': 0.9, 'D': 0.8, 'none': 0 };
+
+        // --- DOM ELEMENTS ---
+        const allModals = document.querySelectorAll('.modal');
+        const gradebookTable = document.getElementById('gradebookTable');
+        const addStudentBtn = document.getElementById('addStudentBtn');
+        const addAssignmentBtn = document.getElementById('addAssignmentBtn');
+        const addSpecialColumnBtn = document.getElementById('addSpecialColumnBtn');
+        const viewSummaryBtn = document.getElementById('viewSummaryBtn');
+        const clearDataBtn = document.getElementById('clearDataBtn');
+        const assignmentTooltip = document.getElementById('assignmentTooltip');
+        const assignmentScoreInput = document.getElementById('assignmentScoreInput');
+        const classTabsContainer = document.getElementById('classTabsContainer');
+        const mainTitle = document.getElementById('mainTitle');
+        const subTitle = document.getElementById('subTitle');
+        const exportBtn = document.getElementById('exportBtn');
+        const importBtn = document.getElementById('importBtn');
+        const importFile = document.getElementById('importFile');
+        const customImportBtn = document.getElementById('customImportBtn');
+        const customImportFile = document.getElementById('customImportFile');
+        
+        // --- APP STATE ---
+        let state = {};
+        let onInputModalConfirm = null;
+        let currentInputType = 'input';
+        let currentEdit = { studentId: null, assignmentId: null };
+
+        // --- INITIAL DATA & STATE MANAGEMENT ---
+        const getNewClassData = () => ({
+            students: [], assignments: [], specialColumns: [],
+            grades: {}, examScores: {}, specialScores: {}, progressScores: {}
+        });
+
+        const getInitialState = () => ({
+            mainTitle: 'ระบบติดตามงานวิชาคณิตศาสตร์ (2568)',
+            subTitle: 'ภาคเรียนที่ 1',
+            classes: [{ id: 1, name: 'ม.1/1' }],
+            currentClassId: 1,
+            scoreConfig: { assignment: 50, midterm: 20, final: 30 },
+            classData: { '1': getNewClassData() },
+            columnVisibility: { assignmentScore: true, midterm: true, final: true, totalScore: true, gpa: true },
+            panelVisibility: { managementPanel: true, columnPanel: true, statusPanel: true }
+        });
+
+        const saveState = async () => {
+            try {
+                await setDoc(gradebookDocRef, state);
+            } catch (error) {
+                console.error("Error saving state to Firebase:", error);
+            }
+        };
+        
+        const setupFirestoreListener = () => {
+            onSnapshot(gradebookDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    state = docSnap.data();
+                    if (!state.scoreConfig) state.scoreConfig = { assignment: 50, midterm: 20, final: 30 };
+                    if (!state.mainTitle) state.mainTitle = 'ระบบติดตามงานวิชาคณิตศาสตร์ (2568)';
+                    if (!state.subTitle) state.subTitle = 'ภาคเรียนที่ 1';
+                    if (!state.panelVisibility) state.panelVisibility = { managementPanel: true, columnPanel: true, statusPanel: true };
+                    // Ensure progressScores object exists for all classes
+                    state.classes.forEach(cls => {
+                        if (state.classData[cls.id] && !state.classData[cls.id].progressScores) {
+                            state.classData[cls.id].progressScores = {};
+                        }
+                    });
+                } else {
+                    console.log("No document found! Creating a new one.");
+                    state = getInitialState();
+                    saveState();
+                }
+                render();
+            }, (error) => {
+                console.error("Error listening to Firestore:", error);
+            });
+        };
+        
+        const getCurrentClassData = () => state.classData ? state.classData[state.currentClassId] : null;
+
+        // --- DATE UTILITIES ---
+        const parseDate = (dateStr) => { // dd/mm/yyyy -> Date
+            if (!dateStr || typeof dateStr !== 'string') return null;
+            const parts = dateStr.split('/');
+            if (parts.length !== 3) return null;
+            const day = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
+            const year = parseInt(parts[2], 10) - 543; // Convert BE to AD
+            return new Date(year, month, day);
+        };
+
+        const formatDate = (date) => { // Date -> dd/mm/yyyy
+            if (!(date instanceof Date) || isNaN(date)) return '';
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear() + 543; // Convert AD to BE
+            return `${day}/${month}/${year}`;
+        };
+
+        const getDueDate = (assignment) => {
+            const assignedDate = parseDate(assignment.assignedDate);
+            if (!assignedDate) return null;
+            const dueDate = new Date(assignedDate);
+            dueDate.setDate(dueDate.getDate() + (assignment.daysToSubmit || 0));
+            return dueDate;
+        };
+
+        const isOverdue = (assignment) => {
+            const dueDate = getDueDate(assignment);
+            if (!dueDate) return false;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Compare dates only
+            return dueDate < today;
+        };
+
+        // --- CORE LOGIC ---
+        const calculateGpa = (score) => {
+            if (score >= 80) return 4.0; if (score >= 75) return 3.5; if (score >= 70) return 3.0;
+            if (score >= 65) return 2.5; if (score >= 60) return 2.0; if (score >= 55) return 1.5;
+            if (score >= 50) return 1.0; return 0.0;
+        };
+
+        const calculateScores = (studentId) => {
+            const classData = getCurrentClassData();
+            if (!classData) return { assignmentScore: 0, totalScore: 0, midterm: 0, final: 0, gpa: '0.0' };
+            
+            const assignmentsForGrading = classData.assignments.filter(assignment => {
+                return !classData.students.some(student => {
+                    const progressScore = classData.progressScores ? classData.progressScores[`${student.id}-${assignment.id}`] : undefined;
+                    return progressScore !== undefined && progressScore !== null && progressScore !== '';
+                });
+            });
+
+            const numAssignments = assignmentsForGrading.length;
+            const studentExams = classData.examScores[studentId] || { midterm: 0, final: 0 };
+            let totalAssignmentPoints = 0;
+            if (numAssignments > 0) {
+                const pointsPerAssignment = state.scoreConfig.assignment / numAssignments;
+                assignmentsForGrading.forEach(assignment => {
+                    const grade = classData.grades[`${studentId}-${assignment.id}`] || 'none';
+                    totalAssignmentPoints += pointsPerAssignment * GRADE_MULTIPLIER[grade];
+                });
+            }
+
+            const roundedAssignmentScore = Math.ceil(totalAssignmentPoints);
+
+            let totalSpecialPoints = 0;
+            classData.specialColumns.forEach(col => {
+                totalSpecialPoints += classData.specialScores[`${studentId}-${col.id}`] || 0;
+            });
+            
+            const totalScore = roundedAssignmentScore + studentExams.midterm + studentExams.final + totalSpecialPoints;
+            const gpa = calculateGpa(totalScore > 100 ? 100 : totalScore);
+            
+            return {
+                assignmentScore: roundedAssignmentScore,
+                totalScore: parseFloat(totalScore.toFixed(2)),
+                midterm: studentExams.midterm,
+                final: studentExams.final,
+                gpa: gpa.toFixed(1)
+            };
+        };
+
+        // --- RENDERING ---
+        const render = () => {
+            if (!state || !state.mainTitle) return;
+            mainTitle.textContent = state.mainTitle;
+            subTitle.textContent = state.subTitle;
+            renderClassTabs();
+            renderTable();
+            updateToggleButtons();
+            updatePanelVisibility();
+            assignmentScoreInput.value = state.scoreConfig.assignment;
+        };
+        
+        const updatePanelVisibility = () => {
+            for (const panelId in state.panelVisibility) {
+                const panel = document.getElementById(panelId);
+                if (panel) {
+                    if (state.panelVisibility[panelId]) {
+                        panel.classList.remove('collapsed');
+                    } else {
+                        panel.classList.add('collapsed');
+                    }
+                }
+            }
+        };
+
+        const renderClassTabs = () => {
+            classTabsContainer.innerHTML = '';
+            state.classes.forEach(cls => {
+                const tab = document.createElement('button');
+                tab.className = `class-tab px-4 py-2 text-sm font-semibold border-b-2 rounded-t-lg`;
+                tab.textContent = cls.name;
+                tab.classList.toggle('active', cls.id === state.currentClassId);
+                tab.classList.toggle('border-indigo-500', cls.id === state.currentClassId);
+                tab.classList.toggle('text-gray-500', cls.id !== state.currentClassId);
+                tab.classList.toggle('hover:bg-gray-100', cls.id !== state.currentClassId);
+                tab.classList.toggle('border-transparent', cls.id !== state.currentClassId);
+                tab.addEventListener('click', () => handleSwitchClass(cls.id));
+                addEditListeners(tab, () => handleEditClassName(cls.id, cls.name));
+                classTabsContainer.appendChild(tab);
+            });
+            const addClassBtn = document.createElement('button');
+            addClassBtn.id = 'addClassBtn';
+            addClassBtn.className = 'ml-2 bg-gray-200 hover:bg-gray-300 text-gray-600 font-bold w-8 h-8 rounded-full flex items-center justify-center';
+            addClassBtn.textContent = '+';
+            addClassBtn.addEventListener('click', handleAddClass);
+            classTabsContainer.appendChild(addClassBtn);
+        };
+
+        const renderTable = () => {
+            gradebookTable.innerHTML = '';
+            const classData = getCurrentClassData();
+            if (!classData) return;
+
+            const { assignmentScore, midterm, final, totalScore, gpa } = state.columnVisibility;
+            const thead = document.createElement('thead');
+            thead.className = "text-xs text-gray-700 uppercase";
+            let headerRow = '<tr>';
+            headerRow += '<th class="px-2 py-2 bg-gray-50 align-middle whitespace-nowrap">ชื่อ - สกุล</th>';
+            if (assignmentScore) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">คะแนนเก็บ</th>';
+            if (midterm) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">กลางภาค</th>';
+            if (final) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">ปลายภาค</th>';
+            classData.specialColumns.forEach(col => {
+                if (state.columnVisibility[`special-${col.id}`]) {
+                    headerRow += `<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">${col.name}</th>`;
+                }
+            });
+            if (totalScore) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">รวม</th>';
+            if (gpa) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">ผลการเรียน</th>';
+            classData.assignments.forEach((a, index) => { 
+                const bgClass = isOverdue(a) ? 'overdue-header' : 'bg-gray-50';
+                headerRow += `<th class="assignment-header p-1 text-center align-middle cursor-pointer ${bgClass}" data-assignment-id="${a.id}">
+                    <div class="square-box"><span>${index + 1}</span></div></th>`; 
+            });
+            headerRow += '<th class="px-2 py-2 text-center align-middle bg-gray-50">จัดการ</th></tr>';
+            thead.innerHTML = headerRow;
+            gradebookTable.appendChild(thead);
+
+            const tbody = document.createElement('tbody');
+            classData.students.forEach(student => {
+                const scores = calculateScores(student.id);
+                let bodyRow = `<tr class="bg-white border-b hover:bg-gray-50">`;
+                bodyRow += `<td class="student-name-cell px-2 py-1 font-medium text-gray-900 whitespace-nowrap bg-white align-middle cursor-pointer hover:bg-gray-100" data-student-id="${student.id}">${student.name}</td>`;
+                if (assignmentScore) bodyRow += `<td class="px-2 py-1 text-center font-semibold text-blue-600 align-middle">${scores.assignmentScore}</td>`;
+                if (midterm) bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-12 text-center bg-gray-100 rounded p-1" data-student-id="${student.id}" data-exam-type="midterm" value="${scores.midterm}" min="0" max="${state.scoreConfig.midterm}"></td>`;
+                if (final) bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-12 text-center bg-gray-100 rounded p-1" data-student-id="${student.id}" data-exam-type="final" value="${scores.final}" min="0" max="${state.scoreConfig.final}"></td>`;
+                classData.specialColumns.forEach(col => {
+                     if (state.columnVisibility[`special-${col.id}`]) {
+                        const score = classData.specialScores[`${student.id}-${col.id}`] || 0;
+                        bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-16 text-center bg-gray-100 rounded p-1" data-student-id="${student.id}" data-column-id="${col.id}" value="${score}"></td>`;
+                     }
+                });
+                if (totalScore) bodyRow += `<td class="px-2 py-1 text-center font-bold text-lg text-green-700 align-middle">${scores.totalScore}</td>`;
+                if (gpa) bodyRow += `<td class="px-2 py-1 text-center font-bold text-lg text-purple-700 align-middle">${scores.gpa}</td>`;
+                classData.assignments.forEach(assignment => {
+                    const progressScore = classData.progressScores ? classData.progressScores[`${student.id}-${assignment.id}`] : undefined;
+                    const grade = classData.grades[`${student.id}-${assignment.id}`] || 'none';
+                    let displayText, displayClass;
+                    if (progressScore !== undefined && progressScore !== null && progressScore !== '') {
+                        displayText = progressScore;
+                        displayClass = 'status-progress';
+                    } else {
+                        displayText = grade === 'none' ? '-' : grade;
+                        displayClass = `status-${grade}`;
+                    }
+                    bodyRow += `<td class="p-1 text-center align-middle"><div class="table-cell-status square-box ${displayClass} font-bold rounded-md" data-student-id="${student.id}" data-assignment-id="${assignment.id}">${displayText}</div></td>`;
+                });
+                bodyRow += `<td class="px-2 py-1 text-center align-middle"><button class="remove-student-btn text-red-500 hover:text-red-700 text-xs" data-student-id="${student.id}">ลบ</button></td>`;
+                bodyRow += '</tr>';
+                tbody.innerHTML += bodyRow;
+            });
+
+            let actionRow = `<tr class="bg-gray-50 h-[38px]"><td class="sticky left-0 bg-gray-50 px-2 py-1"></td>`;
+            if(assignmentScore) actionRow += '<td></td>'; if(midterm) actionRow += '<td></td>'; if(final) actionRow += '<td></td>';
+            classData.specialColumns.forEach(col => {
+                if (state.columnVisibility[`special-${col.id}`]) {
+                     actionRow += `<td class="p-1 text-center align-middle">
+                        <button class="edit-special-column-btn text-xs text-blue-500 hover:underline" data-column-id="${col.id}">แก้ไข</button>
+                        <button class="remove-special-column-btn text-xs text-red-500 hover:underline ml-1" data-column-id="${col.id}">ลบ</button></td>`;
+                }
+            });
+            if(totalScore) actionRow += '<td></td>'; if(gpa) actionRow += '<td></td>';
+            classData.assignments.forEach(a => {
+                actionRow += `<td class="p-1 text-center align-middle">
+                    <button class="edit-assignment-btn text-xs text-blue-500 hover:underline" data-assignment-id="${a.id}">แก้ไข</button>
+                    <button class="remove-assignment-btn text-xs text-red-500 hover:underline ml-1" data-assignment-id="${a.id}">ลบ</button></td>`;
+            });
+            actionRow += '<td></td></tr>';
+            tbody.innerHTML += actionRow;
+            gradebookTable.appendChild(tbody);
+            attachTableEventListeners();
+        };
+
+        const updateToggleButtons = () => {
+            const container = document.getElementById('columnToggleContainer');
+            container.querySelectorAll('.special-toggle').forEach(btn => btn.remove());
+            container.querySelectorAll('.toggle-column-btn:not(.special-toggle)').forEach(btn => {
+                btn.classList.toggle('toggle-btn-active', state.columnVisibility[btn.dataset.column]);
+                btn.classList.toggle('toggle-btn-inactive', !state.columnVisibility[btn.dataset.column]);
+            });
+            const classData = getCurrentClassData();
+            if (!classData) return;
+            classData.specialColumns.forEach(col => {
+                const key = `special-${col.id}`;
+                const btn = document.createElement('button');
+                btn.dataset.column = key;
+                btn.className = 'toggle-column-btn special-toggle text-sm font-bold py-2 px-3 rounded-lg shadow';
+                btn.textContent = col.name;
+                btn.classList.toggle('toggle-btn-active', state.columnVisibility[key]);
+                btn.classList.toggle('toggle-btn-inactive', !state.columnVisibility[key]);
+                btn.addEventListener('click', handleToggleColumn);
+                container.appendChild(btn);
+            });
+        };
+        
+        const renderSummaryModal = () => {
+            const tbody = document.getElementById('summaryTableBody');
+            tbody.innerHTML = '';
+            const classData = getCurrentClassData();
+            classData.assignments.forEach((assignment, index) => {
+                const dueDate = getDueDate(assignment);
+                const row = document.createElement('tr');
+                row.className = 'bg-white border-b hover:bg-gray-50 cursor-pointer';
+                row.dataset.assignmentId = assignment.id;
+                row.innerHTML = `<td class="px-4 py-1">${index + 1}</td><td class="px-4 py-1">${assignment.chapter || '-'}</td>
+                    <td class="px-4 py-1 w-1/2">${assignment.name || '-'}</td><td class="px-4 py-1 text-center">${assignment.quantity || '-'}</td>
+                    <td class="px-4 py-1 text-center">${assignment.page || '-'}</td><td class="px-4 py-1 whitespace-nowrap">${assignment.assignedDate || '-'}</td>
+                    <td class="px-4 py-1 whitespace-nowrap">${dueDate ? formatDate(dueDate) : '-'}</td>`;
+                row.addEventListener('click', () => handleAssignmentHeaderClick(assignment.id));
+                tbody.appendChild(row);
+            });
+        };
+
+        const renderBulkGradeModal = (assignmentId) => {
+            const classData = getCurrentClassData();
+            const assignment = classData.assignments.find(a => a.id === assignmentId);
+            if (!assignment) return;
+            const modalTitle = document.getElementById('bulkGradeModalTitle');
+            const tbody = document.getElementById('bulkGradeTableBody');
+            tbody.innerHTML = '';
+            const filterCheckbox = document.getElementById('bulkGradeFilter');
+            
+            const studentsToGrade = classData.students.filter(student => {
+                if (!filterCheckbox.checked) return true;
+                const gradeKey = `${student.id}-${assignment.id}`;
+                const hasGrade = classData.grades[gradeKey];
+                const hasProgressScore = classData.progressScores && classData.progressScores[gradeKey] !== undefined && classData.progressScores[gradeKey] !== null && classData.progressScores[gradeKey] !== '';
+                return !hasGrade && !hasProgressScore;
+            });
+
+            const unsubmittedCount = studentsToGrade.length;
+            modalTitle.innerHTML = `ให้คะแนนงาน: <span class="font-normal text-gray-600">${assignment.name}</span> <span class="text-sm font-normal text-red-500 ml-2">(${unsubmittedCount} คนที่ยังไม่ส่ง)</span>`;
+            modalTitle.dataset.assignmentId = assignmentId;
+
+            studentsToGrade.forEach(student => {
+                const currentGrade = classData.grades[`${student.id}-${assignment.id}`] || 'none';
+                const row = document.createElement('tr');
+                row.className = 'border-b';
+                let buttonsHtml = ['A', 'B', 'C', 'D', 'none'].map(status => {
+                    const text = status === 'none' ? 'ยังไม่ส่ง' : status;
+                    return `<button data-status="${status}" class="bulk-grade-btn status-${status} rounded-md shadow ${status === 'none' ? 'text-xs' : ''} ${currentGrade === status ? 'selected' : ''}">${text}</button>`;
+                }).join('');
+                row.innerHTML = `<td class="px-4 py-2">${student.name}</td><td class="px-4 py-2"><div class="flex justify-end gap-2">${buttonsHtml}</div></td>`;
+                row.querySelectorAll('.bulk-grade-btn').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const newStatus = e.currentTarget.dataset.status;
+                        const gradeKey = `${student.id}-${assignment.id}`;
+                        if (newStatus === 'none') delete classData.grades[gradeKey];
+                        else classData.grades[gradeKey] = newStatus;
+                        await saveState();
+                        renderBulkGradeModal(assignmentId);
+                    });
+                });
+                tbody.appendChild(row);
+            });
+        };
+
+        const renderStudentGradeModal = (studentId) => {
+            const classData = getCurrentClassData();
+            const student = classData.students.find(s => s.id === studentId);
+            if (!student) return;
+            const modalTitle = document.getElementById('studentGradeModalTitle');
+            const tbody = document.getElementById('studentGradeTableBody');
+            tbody.innerHTML = '';
+            const filterCheckbox = document.getElementById('studentGradeFilter');
+
+            const allAssignments = classData.assignments;
+            let assignmentsToGrade = allAssignments;
+
+            if (filterCheckbox.checked) {
+                assignmentsToGrade = allAssignments.filter(assignment => {
+                    const gradeKey = `${student.id}-${assignment.id}`;
+                    const hasGrade = classData.grades[gradeKey];
+                    const hasProgressScore = classData.progressScores && classData.progressScores[gradeKey] !== undefined && classData.progressScores[gradeKey] !== null && classData.progressScores[gradeKey] !== '';
+                    return !hasGrade && !hasProgressScore;
+                });
+            }
+            
+            const unsubmittedCount = assignmentsToGrade.length;
+            modalTitle.innerHTML = `ให้คะแนน: <span class="font-normal text-gray-600">${student.name}</span> <span class="text-sm font-normal text-red-500 ml-2">(เหลืองาน ${unsubmittedCount} ชิ้น)</span>`;
+            modalTitle.dataset.studentId = studentId;
+
+            assignmentsToGrade.forEach(assignment => {
+                const originalIndex = allAssignments.findIndex(a => a.id === assignment.id);
+                const currentGrade = classData.grades[`${student.id}-${assignment.id}`] || 'none';
+                const row = document.createElement('tr');
+                row.className = 'border-b';
+                let buttonsHtml = ['A', 'B', 'C', 'D', 'none'].map(status => {
+                    const isSelected = currentGrade === status;
+                    const text = status === 'none' ? 'ยังไม่ส่ง' : status;
+                    return `<button data-status="${status}" class="bulk-grade-btn status-${status} rounded-md shadow hover:opacity-80 transition ${status === 'none' ? 'text-xs' : ''} ${isSelected ? 'selected' : ''}">${text}</button>`;
+                }).join('');
+                row.innerHTML = `<td class="px-4 py-2">${originalIndex + 1}. ${assignment.name}</td><td class="px-4 py-2"><div class="flex justify-end gap-2">${buttonsHtml}</div></td>`;
+                row.querySelectorAll('.bulk-grade-btn').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const newStatus = e.currentTarget.dataset.status;
+                        const gradeKey = `${student.id}-${assignment.id}`;
+                        if (newStatus === 'none') delete classData.grades[gradeKey];
+                        else classData.grades[gradeKey] = newStatus;
+                        await saveState();
+                        renderStudentGradeModal(studentId);
+                    });
+                });
+                tbody.appendChild(row);
+            });
+        };
+
+        // --- MODAL CONTROLLERS ---
+        const openModal = (modal) => {
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                modal.querySelector('.modal-content').classList.remove('-translate-y-10');
+            }, 10);
+        };
+
+        const closeModal = (modal) => {
+            modal.classList.add('opacity-0');
+            modal.querySelector('.modal-content').classList.add('-translate-y-10');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                if (modal.id === 'bulkGradeModal' || modal.id === 'studentGradeModal') render();
+            }, 250);
+        };
+
+        const openInputModal = (config) => {
+            document.getElementById('inputModalTitle').textContent = config.title;
+            document.getElementById('inputModalDesc').textContent = config.description || '';
+            const inputField = document.getElementById('inputModalField');
+            const textareaField = document.getElementById('inputModalTextarea');
+            currentInputType = config.inputType || 'input';
+            if (currentInputType === 'textarea') {
+                inputField.style.display = 'none';
+                textareaField.style.display = 'block';
+                textareaField.value = config.defaultValue || '';
+                textareaField.placeholder = config.placeholder || '';
+                textareaField.focus();
+            } else {
+                textareaField.style.display = 'none';
+                inputField.style.display = 'block';
+                inputField.value = config.defaultValue || '';
+                inputField.placeholder = config.placeholder || '';
+                inputField.focus();
+            }
+            onInputModalConfirm = config.onConfirm;
+            openModal(document.getElementById('inputModal'));
+        };
+        
+        const openAssignmentModal = (config) => {
+            document.getElementById('assignmentModalTitle').textContent = config.title;
+            const form = document.getElementById('assignmentForm');
+            form.reset();
+            document.getElementById('assignmentDate').value = config.assignment?.assignedDate || formatDate(new Date());
+            document.getElementById('daysToSubmit').value = config.assignment?.daysToSubmit || 7;
+            if (config.assignment) {
+                document.getElementById('assignmentName').value = config.assignment.name || '';
+                document.getElementById('assignmentChapter').value = config.assignment.chapter || '';
+                document.getElementById('assignmentQuantity').value = config.assignment.quantity || '';
+                document.getElementById('assignmentPage').value = config.assignment.page || '';
+            }
+            onInputModalConfirm = config.onConfirm;
+            openModal(document.getElementById('assignmentModal'));
+        };
+
+        // --- EVENT HANDLERS ---
+        const handleSwitchClass = async (classId) => { state.currentClassId = classId; await saveState(); render(); };
+        const handleAddClass = () => openInputModal({
+            title: 'เพิ่มห้องเรียนใหม่', description: 'กรุณากรอกชื่อห้องเรียน (เช่น ม.1/2)', placeholder: 'ชื่อห้องเรียน',
+            onConfirm: async (name) => {
+                if (name && name.trim()) {
+                    const newId = state.classes.length > 0 ? Math.max(...state.classes.map(c => c.id)) + 1 : 1;
+                    state.classes.push({ id: newId, name: name.trim() });
+                    state.classData[newId] = getNewClassData();
+                    await handleSwitchClass(newId);
+                }
+            }
+        });
+
+        const handleEditClassName = (classId, currentName) => openInputModal({
+            title: 'แก้ไขชื่อห้องเรียน',
+            defaultValue: currentName,
+            onConfirm: async (newName) => {
+                if (newName && newName.trim()) {
+                    const classIndex = state.classes.findIndex(c => c.id === classId);
+                    if (classIndex !== -1) {
+                        state.classes[classIndex].name = newName.trim();
+                        await saveState();
+                        render();
+                    }
+                }
+            }
+        });
+
+        const handleAddStudent = () => openInputModal({
+            title: 'เพิ่มนักเรียนใหม่', description: 'กรุณากรอกชื่อนักเรียน โดยใช้ 1 บรรทัดต่อ 1 คน',
+            placeholder: 'เด็กชายสมชาย เรียนดี\nเด็กหญิงสมศรี ตั้งใจ', inputType: 'textarea',
+            onConfirm: async (names) => {
+                const classData = getCurrentClassData();
+                const nameList = names.split('\n').map(name => name.trim()).filter(name => name);
+                if (nameList.length > 0) {
+                    let maxId = classData.students.length > 0 ? Math.max(...classData.students.map(s => s.id)) : 0;
+                    nameList.forEach(name => { maxId++; classData.students.push({ id: maxId, name: name }); });
+                    await saveState(); render();
+                }
+            }
+        });
+
+        const handleAddAssignment = () => openAssignmentModal({
+            title: 'เพิ่มงานใหม่',
+            onConfirm: async (data) => {
+                const classData = getCurrentClassData();
+                const newId = classData.assignments.length > 0 ? Math.max(...classData.assignments.map(a => a.id)) + 1 : 1;
+                classData.assignments.push({ id: newId, ...data });
+                await saveState(); render();
+            }
+        });
+
+        const handleAddSpecialColumn = () => openInputModal({
+            title: 'เพิ่มคอลัมน์พิเศษ', description: 'กรุณากรอกชื่อคอลัมน์ (เช่น จิตพิสัย)', placeholder: 'ชื่อคอลัมน์',
+            onConfirm: async (name) => {
+                const classData = getCurrentClassData();
+                if (name && name.trim()) {
+                    const newId = classData.specialColumns.length > 0 ? Math.max(...classData.specialColumns.map(c => c.id)) + 1 : 1;
+                    classData.specialColumns.push({ id: newId, name: name.trim() });
+                    state.columnVisibility[`special-${newId}`] = true;
+                    await saveState(); render();
+                }
+            }
+        });
+        
+        const handleViewSummary = () => { renderSummaryModal(); openModal(document.getElementById('summaryModal')); };
+        const handleAssignmentHeaderClick = (id) => { renderBulkGradeModal(id); openModal(document.getElementById('bulkGradeModal')); };
+        const handleStudentNameClick = (id) => { renderStudentGradeModal(id); openModal(document.getElementById('studentGradeModal')); };
+
+        const handleEditAssignment = (id) => {
+            const classData = getCurrentClassData();
+            const assignment = classData.assignments.find(a => a.id === parseInt(id));
+            if (!assignment) return;
+            openAssignmentModal({
+                title: 'แก้ไขรายละเอียดงาน', assignment: assignment,
+                onConfirm: async (data) => {
+                    const index = classData.assignments.findIndex(a => a.id === parseInt(id));
+                    if (index !== -1) { classData.assignments[index] = { ...classData.assignments[index], ...data }; await saveState(); render(); }
+                }
+            });
+        };
+        
+        const handleEditSpecialColumn = (id) => {
+            const classData = getCurrentClassData();
+            const column = classData.specialColumns.find(c => c.id === parseInt(id));
+            if (!column) return;
+            openInputModal({
+                title: 'แก้ไขชื่อคอลัมน์', description: `เปลี่ยนชื่อคอลัมน์ "${column.name}"`,
+                placeholder: 'ชื่อคอลัมน์ใหม่', defaultValue: column.name,
+                onConfirm: async (newName) => {
+                    if (newName && newName.trim()) {
+                        const index = classData.specialColumns.findIndex(c => c.id === parseInt(id));
+                        if (index !== -1) { classData.specialColumns[index].name = newName.trim(); await saveState(); render(); }
+                    }
+                }
+            });
+        };
+
+        const handleRemoveAssignment = (id) => {
+            const classData = getCurrentClassData();
+            const assignment = classData.assignments.find(a => a.id === parseInt(id));
+            if (!assignment) return;
+            openInputModal({
+                title: `ลบงาน: ${assignment.name}`, description: 'หากต้องการยืนยัน พิมพ์ "ลบ"', placeholder: 'พิมพ์ "ลบ"',
+                onConfirm: async (confirmation) => {
+                    if (confirmation === 'ลบ') {
+                        classData.assignments = classData.assignments.filter(a => a.id !== parseInt(id));
+                        Object.keys(classData.grades).forEach(key => { if (key.endsWith(`-${id}`)) delete classData.grades[key]; });
+                        await saveState(); render();
+                    }
+                }
+            });
+        };
+
+        const handleRemoveSpecialColumn = (id) => {
+            const classData = getCurrentClassData();
+            const column = classData.specialColumns.find(c => c.id === parseInt(id));
+            if (!column) return;
+            openInputModal({
+                title: `ลบคอลัมน์: ${column.name}`, description: 'การดำเนินการนี้จะลบคะแนนทั้งหมดในคอลัมน์นี้ด้วย หากต้องการยืนยัน พิมพ์ "ลบ"',
+                placeholder: 'พิมพ์ "ลบ"',
+                onConfirm: async (confirmation) => {
+                    if (confirmation === 'ลบ') {
+                        classData.specialColumns = classData.specialColumns.filter(c => c.id !== parseInt(id));
+                        delete state.columnVisibility[`special-${id}`];
+                        Object.keys(classData.specialScores).forEach(key => { if (key.endsWith(`-${id}`)) delete classData.specialScores[key]; });
+                        await saveState(); render();
+                    }
+                }
+            });
+        };
+
+        const handleRemoveStudent = (id) => openInputModal({
+            title: `ลบนักเรียน`, description: 'หากต้องการยืนยัน พิมพ์ "ลบ"', placeholder: 'พิมพ์ "ลบ"',
+            onConfirm: async (confirmation) => {
+                if (confirmation === 'ลบ') {
+                    const classData = getCurrentClassData();
+                    classData.students = classData.students.filter(s => s.id !== parseInt(id));
+                    await saveState(); render();
+                }
+            }
+        });
+
+        const handleClearData = () => {
+            openInputModal({
+                title: `ล้างข้อมูลห้องเรียน: ${state.classes.find(c => c.id === state.currentClassId).name}`,
+                description: 'การดำเนินการนี้จะลบข้อมูลนักเรียน, งาน, และคะแนนทั้งหมดในห้องนี้อย่างถาวร หากต้องการยืนยัน พิมพ์ "ลบ"',
+                placeholder: 'พิมพ์ "ลบ"',
+                onConfirm: async (confirmation) => {
+                    if (confirmation === 'ลบ') {
+                        state.classData[state.currentClassId] = getNewClassData();
+                        await saveState();
+                        render();
+                    }
+                }
+            });
+        };
+
+        const handleToggleColumn = async (e) => { state.columnVisibility[e.currentTarget.dataset.column] = !state.columnVisibility[e.currentTarget.dataset.column]; await saveState(); render(); };
+        const handleStatusUpdate = async (status) => {
+            const classData = getCurrentClassData();
+            const { studentId, assignmentId } = currentEdit;
+            const gradeKey = `${studentId}-${assignmentId}`;
+            if (status === 'none') delete classData.grades[gradeKey];
+            else classData.grades[gradeKey] = status;
+            delete classData.progressScores[gradeKey]; // Clear progress score when letter grade is set
+            await saveState(); render();
+            closeModal(document.getElementById('gradeModal'));
+        };
+
+        const handleProgressScoreUpdate = async (score) => {
+            const classData = getCurrentClassData();
+            const { studentId, assignmentId } = currentEdit;
+            const gradeKey = `${studentId}-${assignmentId}`;
+            if (score === null || score === '') {
+                delete classData.progressScores[gradeKey];
+            } else {
+                classData.progressScores[gradeKey] = score;
+                delete classData.grades[gradeKey]; // Clear letter grade when progress score is set
+            }
+            await saveState();
+            // No need to close modal, just save and re-render main table
+            render();
+        };
+        
+        const showTooltip = (e) => {
+            const classData = getCurrentClassData();
+            const assignmentId = e.currentTarget.dataset.assignmentId;
+            const assignment = classData.assignments.find(a => a.id === parseInt(assignmentId));
+            if (!assignment) return;
+            const dueDate = getDueDate(assignment);
+            
+            assignmentTooltip.innerHTML = `<strong>ชื่องาน:</strong> ${assignment.name || '-'}<br><strong>มอบหมาย:</strong> ${assignment.assignedDate || '-'}<br><strong>กำหนดส่ง:</strong> ${dueDate ? formatDate(dueDate) : '-'}`;
+            assignmentTooltip.style.display = 'block';
+            const rect = e.currentTarget.getBoundingClientRect();
+            assignmentTooltip.style.left = `${window.scrollX + rect.left}px`;
+            assignmentTooltip.style.top = `${window.scrollY + rect.bottom + 5}px`;
+        };
+
+        const hideTooltip = () => { assignmentTooltip.style.display = 'none'; };
+        
+        function addEditListeners(element, callback) {
+            element.addEventListener('dblclick', callback);
+            let pressTimer;
+            element.addEventListener('touchstart', (e) => {
+                pressTimer = window.setTimeout(() => {
+                    e.preventDefault();
+                    callback();
+                }, 750);
+            });
+            element.addEventListener('touchend', () => clearTimeout(pressTimer));
+            element.addEventListener('touchmove', () => clearTimeout(pressTimer));
+        }
+
+        function attachTableEventListeners() {
+            document.querySelectorAll('.table-cell-status').forEach(cell => cell.addEventListener('click', (e) => {
+                currentEdit = { studentId: parseInt(e.currentTarget.dataset.studentId), assignmentId: parseInt(e.currentTarget.dataset.assignmentId) };
+                const classData = getCurrentClassData();
+                const student = classData.students.find(s => s.id === currentEdit.studentId);
+                const assignment = classData.assignments.find(a => a.id === currentEdit.assignmentId);
+                document.getElementById('modalStudentName').textContent = student.name;
+                document.getElementById('modalAssignmentName').textContent = assignment.name;
+                const progressScore = classData.progressScores ? classData.progressScores[`${currentEdit.studentId}-${currentEdit.assignmentId}`] : '';
+                document.getElementById('modalProgressScore').value = progressScore || '';
+                openModal(document.getElementById('gradeModal'));
+            }));
+            document.querySelectorAll('.student-name-cell').forEach(cell => {
+                cell.addEventListener('click', (e) => handleStudentNameClick(parseInt(e.currentTarget.dataset.studentId)));
+            });
+            document.querySelectorAll('.remove-student-btn').forEach(btn => btn.addEventListener('click', (e) => handleRemoveStudent(e.currentTarget.dataset.studentId)));
+            document.querySelectorAll('input[data-exam-type]').forEach(input => input.addEventListener('change', async (e) => {
+                const classData = getCurrentClassData();
+                const { studentId, examType } = e.target.dataset;
+                let value = parseInt(e.target.value) || 0;
+                const maxScore = state.scoreConfig[examType];
+                if (value > maxScore) value = maxScore; if (value < 0) value = 0;
+                e.target.value = value;
+                if (!classData.examScores[studentId]) classData.examScores[studentId] = { midterm: 0, final: 0 };
+                classData.examScores[studentId][examType] = value;
+                await saveState(); render();
+            }));
+            document.querySelectorAll('input[data-column-id]').forEach(input => input.addEventListener('change', async (e) => {
+                const classData = getCurrentClassData();
+                const { studentId, columnId } = e.target.dataset;
+                let value = parseInt(e.target.value) || 0;
+                if (value < 0) value = 0;
+                e.target.value = value;
+                classData.specialScores[`${studentId}-${columnId}`] = value;
+                await saveState(); render();
+            }));
+            document.querySelectorAll('.assignment-header').forEach(header => {
+                header.addEventListener('mouseenter', showTooltip);
+                header.addEventListener('mouseleave', hideTooltip);
+                header.addEventListener('click', (e) => handleAssignmentHeaderClick(parseInt(e.currentTarget.dataset.assignmentId)));
+            });
+            document.querySelectorAll('.edit-assignment-btn').forEach(btn => btn.addEventListener('click', (e) => handleEditAssignment(e.currentTarget.dataset.assignmentId)));
+            document.querySelectorAll('.remove-assignment-btn').forEach(btn => btn.addEventListener('click', (e) => handleRemoveAssignment(e.currentTarget.dataset.assignmentId)));
+            document.querySelectorAll('.edit-special-column-btn').forEach(btn => btn.addEventListener('click', (e) => handleEditSpecialColumn(e.currentTarget.dataset.columnId)));
+            document.querySelectorAll('.remove-special-column-btn').forEach(btn => btn.addEventListener('click', (e) => handleRemoveSpecialColumn(e.currentTarget.dataset.columnId)));
+        }
+        
+        // --- EXPORT/IMPORT HANDLERS ---
+        const handleExport = () => {
+            const wb = XLSX.utils.book_new();
+
+            // Create a sheet for each class
+            state.classes.forEach(cls => {
+                const classData = state.classData[cls.id];
+                const headers = ["ชื่อ - สกุล", "คะแนนเก็บ", "กลางภาค", "ปลายภาค"];
+                classData.specialColumns.forEach(sc => headers.push(sc.name));
+                headers.push("รวม", "ผลการเรียน");
+                classData.assignments.forEach((a, i) => headers.push(`งานที่ ${i + 1}: ${a.name}`));
+                
+                const data = classData.students.map(student => {
+                    const scores = calculateScores(student.id);
+                    const row = {
+                        "ชื่อ - สกุล": student.name,
+                        "คะแนนเก็บ": scores.assignmentScore,
+                        "กลางภาค": scores.midterm,
+                        "ปลายภาค": scores.final,
+                        "รวม": scores.totalScore,
+                        "ผลการเรียน": scores.gpa
+                    };
+                    classData.specialColumns.forEach(sc => {
+                        row[sc.name] = classData.specialScores[`${student.id}-${sc.id}`] || 0;
+                    });
+                    classData.assignments.forEach((a, i) => {
+                        row[`งานที่ ${i + 1}: ${a.name}`] = classData.grades[`${student.id}-${a.id}`] || "-";
+                    });
+                    return row;
+                });
+
+                const ws = XLSX.utils.json_to_sheet(data, { header: headers });
+                XLSX.utils.book_append_sheet(wb, ws, cls.name.replace(/[\\/?*[\]]/g, '')); // Sanitize sheet name
+
+                // Create assignments sheet for each class
+                const assignmentHeaders = ["ที่", "บทที่", "ชื่องาน", "จำนวน", "หน้า", "วันที่มอบหมาย", "กำหนดส่ง (วัน)"];
+                const assignmentData = classData.assignments.map((a, index) => ({
+                    "ที่": index + 1,
+                    "บทที่": a.chapter,
+                    "ชื่องาน": a.name,
+                    "จำนวน": a.quantity,
+                    "หน้า": a.page,
+                    "วันที่มอบหมาย": a.assignedDate,
+                    "กำหนดส่ง (วัน)": a.daysToSubmit
+                }));
+                const assignmentWs = XLSX.utils.json_to_sheet(assignmentData, { header: assignmentHeaders });
+                XLSX.utils.book_append_sheet(wb, assignmentWs, `งาน-${cls.name.replace(/[\\/?*[\]]/g, '')}`);
+            });
+
+            // Add the hidden backup data sheet
+            const backupWsData = [{ state_json: JSON.stringify(state) }];
+            const backupWs = XLSX.utils.json_to_sheet(backupWsData);
+            // Using a generic name for the backup sheet now
+            const backupSheetName = "GradebookBackupData";
+            XLSX.utils.book_append_sheet(wb, backupWs, backupSheetName);
+            
+            XLSX.writeFile(wb, `gradebook_export_${new Date().toISOString().slice(0,10)}.xlsx`);
+        };
+        
+        const showToast = (message, isError = false) => {
+            const toast = document.createElement('div');
+            toast.textContent = message;
+            toast.className = `toast-notification ${isError ? 'bg-red-500' : 'bg-green-500'}`;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    toast.remove();
+                }, 300);
+            }, 3000);
+        };
+
+        const handleImport = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    
+                    let backupSheet = null;
+                    // Find the sheet containing the state backup by checking for 'state_json' header
+                    for (const sheetName of workbook.SheetNames) {
+                        const worksheet = workbook.Sheets[sheetName];
+                        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 }); // Read as array of arrays
+                        if (json.length > 0 && json[0][0] === 'state_json') {
+                            // Convert back to object array using the header
+                            const objectData = XLSX.utils.sheet_to_json(worksheet);
+                            backupSheet = objectData;
+                            break; // Found the sheet
+                        }
+                    }
+
+                    if (backupSheet && backupSheet.length > 0 && backupSheet[0].state_json) {
+                        const importedState = JSON.parse(backupSheet[0].state_json);
+                        
+                        if (importedState && importedState.classes && importedState.classData) {
+                            openInputModal({
+                                title: 'ยืนยันการนำเข้าข้อมูล',
+                                description: 'พบข้อมูลสำรองในไฟล์ Excel ต้องการเขียนทับข้อมูลปัจจุบันทั้งหมดหรือไม่? พิมพ์ "นำเข้า" เพื่อยืนยัน',
+                                placeholder: 'พิมพ์ "นำเข้า"',
+                                onConfirm: async (confirmation) => {
+                                    if (confirmation === 'นำเข้า') {
+                                        state = importedState;
+                                        await saveState();
+                                        showToast('นำเข้าข้อมูลสำรองสำเร็จ!');
+                                    }
+                                }
+                            });
+                            return; // Exit after successful processing
+                        }
+                    }
+                    
+                    // If no valid backup sheet was found
+                    showToast('ไม่พบข้อมูลสำรองที่ถูกต้องในไฟล์นี้ ไม่สามารถนำเข้าข้อมูลได้', true);
+
+                } catch (error) {
+                    console.error("Error importing file:", error);
+                    showToast('เกิดข้อผิดพลาดในการนำเข้าไฟล์', true);
+                } finally {
+                    e.target.value = ''; // Reset file input
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        };
+
+        const handleCustomImport = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+
+            reader.onload = async (event) => {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+
+                    if (workbook.SheetNames.length < 2) {
+                        showToast('ไฟล์ Excel ต้องมีอย่างน้อย 2 ชีต (ชีตนักเรียน และ ชีตงาน)', true);
+                        return;
+                    }
+
+                    const studentSheetName = workbook.SheetNames[0];
+                    const assignmentSheetName = workbook.SheetNames[1];
+                    
+                    const studentDataRaw = XLSX.utils.sheet_to_json(workbook.Sheets[studentSheetName], { header: 1, defval: "" });
+                    const assignmentData = XLSX.utils.sheet_to_json(workbook.Sheets[assignmentSheetName]);
+
+                    if (studentDataRaw.length < 2 || assignmentData.length === 0) {
+                        showToast('ชีตข้อมูลนักเรียนและชีตข้อมูลงานต้องมีข้อมูล', true);
+                        return;
+                    }
+
+                    openInputModal({
+                        title: 'ยืนยันการนำเข้าข้อมูลดิบ',
+                        description: 'การดำเนินการนี้จะล้างข้อมูลทั้งหมดในห้องเรียนปัจจุบัน และนำเข้าข้อมูลใหม่จากไฟล์ Excel พิมพ์ "นำเข้าข้อมูลดิบ" เพื่อยืนยัน',
+                        placeholder: 'พิมพ์ "นำเข้าข้อมูลดิบ"',
+                        onConfirm: async (confirmation) => {
+                            if (confirmation === 'นำเข้าข้อมูลดิบ') {
+                                const classData = getCurrentClassData();
+                                Object.assign(classData, getNewClassData());
+
+                                const assignmentMap = new Map();
+                                assignmentData.forEach((row, index) => {
+                                    const newId = index + 1;
+                                    const newAssignment = {
+                                        id: newId,
+                                        name: row['ชื่องาน'] || `งานที่ ${newId}`,
+                                        chapter: row['บทที่'] || '',
+                                        assignedDate: row['วันที่มอบหมาย'] || '',
+                                        daysToSubmit: row['กำหนดส่ง (วัน)'] || 7,
+                                        quantity: row['จำนวน'] || '',
+                                        page: row['หน้า'] || ''
+                                    };
+                                    classData.assignments.push(newAssignment);
+                                    const assignmentHeaderKey = row['ที่'] || (index + 1);
+                                    assignmentMap.set(String(assignmentHeaderKey), newId);
+                                });
+
+                                const studentHeaders = studentDataRaw[0];
+                                const studentRows = studentDataRaw.slice(1);
+                                const studentNameHeaderIndex = studentHeaders.findIndex(h => String(h).trim() === 'ชื่อ - สกุล');
+
+                                if (studentNameHeaderIndex === -1) {
+                                    showToast('ไม่พบคอลัมน์ "ชื่อ - สกุล" ในชีตนักเรียน', true);
+                                    return;
+                                }
+
+                                studentRows.forEach((row, rowIndex) => {
+                                    const studentName = row[studentNameHeaderIndex];
+                                    if (!studentName) return;
+
+                                    const newStudentId = rowIndex + 1;
+                                    classData.students.push({ id: newStudentId, name: studentName });
+
+                                    studentHeaders.forEach((header, colIndex) => {
+                                        let assignmentId = null;
+                                        const headerStr = String(header).trim();
+
+                                        if (assignmentMap.has(headerStr)) {
+                                            assignmentId = assignmentMap.get(headerStr);
+                                        } else {
+                                            const match = headerStr.match(/งานที่ (\d+)/);
+                                            if (match && match[1]) {
+                                                assignmentId = assignmentMap.get(match[1]);
+                                            }
+                                        }
+
+                                        if (assignmentId) {
+                                            const cellValue = String(row[colIndex] || '').trim();
+                                            const gradeKey = `${newStudentId}-${assignmentId}`;
+
+                                            if (!cellValue || cellValue === '-') {
+                                                // Skip empty or '-' cells
+                                            } else if (!isNaN(parseFloat(cellValue)) && isFinite(cellValue)) {
+                                                classData.progressScores[gradeKey] = parseFloat(cellValue);
+                                            } else if (cellValue.toUpperCase() in GRADE_MULTIPLIER) {
+                                                classData.grades[gradeKey] = cellValue.toUpperCase();
+                                            }
+                                        }
+                                    });
+                                });
+
+                                await saveState();
+                                showToast('นำเข้าข้อมูลดิบสำเร็จ!');
+                                render();
+                            }
+                        }
+                    });
+
+                } catch (error) {
+                    console.error("Error during custom import:", error);
+                    showToast('เกิดข้อผิดพลาดระหว่างการนำเข้าข้อมูลดิบ', true);
+                } finally {
+                    e.target.value = '';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        };
+
+        // --- INITIALIZATION ---
+        addStudentBtn.addEventListener('click', handleAddStudent);
+        addAssignmentBtn.addEventListener('click', handleAddAssignment);
+        addSpecialColumnBtn.addEventListener('click', handleAddSpecialColumn);
+        viewSummaryBtn.addEventListener('click', handleViewSummary);
+        clearDataBtn.addEventListener('click', handleClearData);
+        assignmentScoreInput.addEventListener('change', async (e) => {
+            let value = parseInt(e.target.value);
+            if (isNaN(value) || value < 0) value = 0;
+            state.scoreConfig.assignment = value;
+            await saveState(); render();
+        });
+        
+        exportBtn.addEventListener('click', handleExport);
+        importBtn.addEventListener('click', () => importFile.click());
+        importFile.addEventListener('change', handleImport);
+        customImportBtn.addEventListener('click', () => customImportFile.click());
+        customImportFile.addEventListener('change', handleCustomImport);
+        
+        addEditListeners(mainTitle, () => openInputModal({
+            title: 'แก้ไขหัวข้อหลัก',
+            defaultValue: state.mainTitle,
+            onConfirm: async (newTitle) => { if (newTitle.trim()) { state.mainTitle = newTitle.trim(); await saveState(); render(); } }
+        }));
+        addEditListeners(subTitle, () => openInputModal({
+            title: 'แก้ไขหัวข้อรอง',
+            defaultValue: state.subTitle,
+            onConfirm: async (newTitle) => { if (newTitle.trim()) { state.subTitle = newTitle.trim(); await saveState(); render(); } }
+        }));
+
+        document.querySelectorAll('#columnToggleContainer .toggle-column-btn:not(.special-toggle)').forEach(btn => {
+            btn.addEventListener('click', handleToggleColumn);
+        });
+        
+        allModals.forEach(modal => {
+            modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(modal); });
+            const closeButton = modal.querySelector('button[id^="close"], button[id$="CancelBtn"]');
+            if (closeButton) {
+                closeButton.addEventListener('click', () => closeModal(modal));
+            }
+        });
+
+        document.querySelectorAll('.status-btn').forEach(btn => btn.addEventListener('click', (e) => handleStatusUpdate(e.target.dataset.status)));
+        
+        document.getElementById('modalProgressScore').addEventListener('change', (e) => {
+            handleProgressScoreUpdate(e.target.value);
+        });
+
+        document.getElementById('inputModalConfirmBtn').addEventListener('click', async () => {
+            let value = (currentInputType === 'textarea') ? document.getElementById('inputModalTextarea').value : document.getElementById('inputModalField').value;
+            if (onInputModalConfirm) await onInputModalConfirm(value);
+            closeModal(document.getElementById('inputModal'));
+        });
+        document.getElementById('assignmentModalConfirmBtn').addEventListener('click', async () => {
+            const data = {
+                name: document.getElementById('assignmentName').value,
+                chapter: document.getElementById('assignmentChapter').value,
+                assignedDate: document.getElementById('assignmentDate').value,
+                daysToSubmit: parseInt(document.getElementById('daysToSubmit').value) || 7,
+                quantity: document.getElementById('assignmentQuantity').value,
+                page: document.getElementById('assignmentPage').value,
+            };
+            if (onInputModalConfirm) await onInputModalConfirm(data);
+            closeModal(document.getElementById('assignmentModal'));
+        });
+        
+        document.getElementById('bulkGradeFilter').addEventListener('change', () => {
+            const assignmentId = parseInt(document.getElementById('bulkGradeModalTitle').dataset.assignmentId);
+            renderBulkGradeModal(assignmentId);
+        });
+        document.getElementById('studentGradeFilter').addEventListener('change', () => {
+            const studentId = parseInt(document.getElementById('studentGradeModalTitle').dataset.studentId);
+            renderStudentGradeModal(studentId);
+        });
+        
+        document.querySelectorAll('.collapse-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const panel = e.currentTarget.closest('[id$="Panel"]');
+                if (panel) {
+                    state.panelVisibility[panel.id] = !state.panelVisibility[panel.id];
+                    saveState();
+                    updatePanelVisibility();
+                }
+            });
+        });
+
+        setupFirestoreListener();
+    });
+</script>
+
+</body>
+</html>
