@@ -188,6 +188,14 @@
         .student-row.drag-over {
             border-top: 2px solid #4f46e5; /* indigo */
         }
+        /* Custom scrollbar for horizontal scrolling tabs on mobile */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -197,7 +205,7 @@
         
         <header class="mb-4 flex justify-between items-start">
             <div>
-                <h1 id="mainTitle" class="editable text-3xl font-bold text-gray-700 rounded px-2 py-1">ระบบติดตามงานวิชาคณิตศาสตร์ (2568)</h1>
+                <h1 id="mainTitle" class="editable text-2xl sm:text-3xl font-bold text-gray-700 rounded px-2 py-1">ระบบติดตามงานวิชาคณิตศาสตร์ (2568)</h1>
                 <p id="subTitle" class="editable text-gray-500 rounded px-2 py-1">ภาคเรียนที่ 1</p>
             </div>
             <div class="flex items-center gap-2">
@@ -216,14 +224,15 @@
             </div>
         </header>
 
-        <!-- Class Tabs & Quick Actions -->
-        <div class="mb-6 flex justify-between items-center">
-            <div id="classTabsContainer" class="flex flex-wrap items-center gap-2">
+        <!-- Responsive Layout: Stacks vertically on mobile, horizontally on larger screens -->
+        <div class="mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+            <!-- Horizontal Scrolling on Mobile -->
+            <div id="classTabsContainer" class="flex items-center gap-2 overflow-x-auto whitespace-nowrap pb-2 no-scrollbar">
                 <!-- Class tabs will be rendered here -->
             </div>
-            <div id="quickActionsContainer" class="flex gap-2">
-                 <button id="addAssignmentBtn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow">เพิ่มงาน</button>
-                 <button id="viewSummaryBtn" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow">ดูสรุปงาน</button>
+            <div id="quickActionsContainer" class="flex gap-2 w-full sm:w-auto">
+                 <button id="addAssignmentBtn" class="flex-1 sm:flex-none bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow">เพิ่มงาน</button>
+                 <button id="viewSummaryBtn" class="flex-1 sm:flex-none bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow">ดูสรุปงาน</button>
             </div>
         </div>
 
