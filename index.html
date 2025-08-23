@@ -8,6 +8,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;700&display=swap" rel="stylesheet">
     <!-- SheetJS library for Excel export/import -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Chart.js for Dashboard -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- html2canvas for JPG Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         body {
             font-family: 'Sarabun', sans-serif;
@@ -231,13 +235,56 @@
                 <!-- Class tabs will be rendered here -->
             </div>
             <div id="quickActionsContainer" class="flex gap-2 w-full sm:w-auto">
+                 <button id="dashboardBtn" class="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow">แดชบอร์ด</button>
                  <button id="addAssignmentBtn" class="flex-1 sm:flex-none bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow">เพิ่มงาน</button>
                  <button id="viewSummaryBtn" class="flex-1 sm:flex-none bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow">ดูสรุปงาน</button>
             </div>
         </div>
 
-        <div class="table-container bg-white rounded-lg shadow-md mb-6">
-            <table id="gradebookTable" class="text-sm text-left text-gray-600 w-full"></table>
+        <!-- Main Content Area -->
+        <div id="mainContent">
+            <div id="gradebookView">
+                <div class="table-container bg-white rounded-lg shadow-md mb-6">
+                    <table id="gradebookTable" class="text-sm text-left text-gray-600 w-full"></table>
+                </div>
+            </div>
+            <div id="dashboardView" class="hidden">
+                 <div id="dashboardContent" class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-6">
+                        <h2 id="dashboardTitle" class="text-2xl font-bold text-gray-800">สรุปผลภาพรวมรายวิชาคณิตศาสตร์</h2>
+                        <button id="exportDashboardBtn" class="mt-4 sm:mt-0 bg-gray-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center shadow-md">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Export JPG
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <!-- Chart 1: Submission Overview -->
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <h3 class="font-semibold mb-2 text-center">ภาพรวมการส่งงาน</h3>
+                            <div class="w-full max-w-xs mx-auto">
+                                <canvas id="submissionChart"></canvas>
+                            </div>
+                        </div>
+                        <!-- Chart 2: Assignment Performance -->
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <h3 class="font-semibold mb-2 text-center">อัตราการส่งแต่ละงาน</h3>
+                            <canvas id="performanceChart"></canvas>
+                        </div>
+                        <!-- Students at Risk -->
+                        <div class="bg-red-50 p-4 rounded-lg">
+                            <h3 class="font-semibold text-red-800 mb-2">🔴 นักเรียนที่ต้องดูแลเป็นพิเศษ</h3>
+                            <ul id="studentsAtRiskList" class="list-disc list-inside text-red-700"></ul>
+                        </div>
+                        <!-- Top Performers -->
+                        <div class="bg-green-50 p-4 rounded-lg">
+                             <h3 class="font-semibold text-green-800 mb-2">⭐ นักเรียนดีเด่น</h3>
+                            <ul id="topPerformersList" class="list-disc list-inside text-green-700"></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     
     </div>
@@ -486,6 +533,10 @@
         const undoBtn = document.getElementById('undoBtn');
         const redoBtn = document.getElementById('redoBtn');
         const deleteClassBtn = document.getElementById('deleteClassBtn');
+        const dashboardBtn = document.getElementById('dashboardBtn');
+        const gradebookView = document.getElementById('gradebookView');
+        const dashboardView = document.getElementById('dashboardView');
+        const exportDashboardBtn = document.getElementById('exportDashboardBtn');
         
         // --- APP STATE ---
         let state = {};
@@ -495,6 +546,9 @@
         let currentEdit = { studentId: null, assignmentId: null };
         let draggedTab = null;
         let draggedStudentId = null;
+        let currentView = 'gradebook'; // 'gradebook' or 'dashboard'
+        let submissionChartInstance = null;
+        let performanceChartInstance = null;
 
 
         // --- HISTORY MANAGEMENT (Undo/Redo) ---
@@ -624,7 +678,7 @@
             return dueDate < today;
         };
 
-        // --- CORE LOGIC ---
+        // --- CORE LOGIC & DASHBOARD ---
         const isSubmissionComplete = (studentId) => {
             const classData = getCurrentClassData();
             if (!classData || classData.assignments.length === 0) return false;
@@ -693,7 +747,17 @@
             mainTitle.textContent = state.mainTitle;
             subTitle.textContent = state.subTitle;
             renderClassTabs();
-            renderTable();
+            
+            if (currentView === 'gradebook') {
+                gradebookView.classList.remove('hidden');
+                dashboardView.classList.add('hidden');
+                renderTable();
+            } else {
+                gradebookView.classList.add('hidden');
+                dashboardView.classList.remove('hidden');
+                renderDashboard();
+            }
+
             updateToggleButtons();
             updatePanelVisibility();
             const currentClassData = getCurrentClassData();
@@ -1029,6 +1093,147 @@
                     });
                 });
                 container.appendChild(row);
+            });
+        };
+        
+        const renderDashboard = () => {
+            const classData = getCurrentClassData();
+            const dashboardTitle = document.getElementById('dashboardTitle');
+            if (!classData || !classData.students.length) {
+                dashboardTitle.textContent = `สรุปผลภาพรวมรายวิชาคณิตศาสตร์ - ไม่มีข้อมูล`;
+                // Clear dashboard content
+                if(submissionChartInstance) submissionChartInstance.destroy();
+                if(performanceChartInstance) performanceChartInstance.destroy();
+                document.getElementById('studentsAtRiskList').innerHTML = '<li>ไม่มีข้อมูล</li>';
+                document.getElementById('topPerformersList').innerHTML = '<li>ไม่มีข้อมูล</li>';
+                return;
+            }
+
+            const currentClass = state.classes.find(c => c.id === state.currentClassId);
+            dashboardTitle.textContent = `สรุปผลภาพรวมรายวิชาคณิตศาสตร์: ${currentClass.name}`;
+            
+            // 1. Submission Overview Data
+            let submittedCount = 0;
+            let missingCount = 0;
+            
+            classData.students.forEach(student => {
+                classData.assignments.forEach(assignment => {
+                    const gradeKey = `${student.id}-${assignment.id}`;
+                    const hasGrade = classData.grades[gradeKey] && classData.grades[gradeKey] !== 'none';
+                    const hasProgress = classData.progressScores && classData.progressScores[gradeKey];
+                    if (hasGrade || hasProgress) {
+                        submittedCount++;
+                    } else {
+                        missingCount++;
+                    }
+                });
+            });
+
+            // 2. Assignment Performance Data
+            const assignmentLabels = classData.assignments.map((a, i) => `งานที่ ${i + 1}`);
+            const assignmentSubmissionRates = classData.assignments.map(assignment => {
+                let count = 0;
+                classData.students.forEach(student => {
+                     const gradeKey = `${student.id}-${assignment.id}`;
+                     if (classData.grades[gradeKey] || (classData.progressScores && classData.progressScores[gradeKey])) {
+                         count++;
+                     }
+                });
+                return (count / classData.students.length) * 100;
+            });
+
+            // 3. Students at Risk & Top Performers
+            const studentSubmissionCounts = classData.students.map(student => {
+                let submittedCount = 0;
+                 classData.assignments.forEach(assignment => {
+                     const gradeKey = `${student.id}-${assignment.id}`;
+                     const hasGrade = classData.grades[gradeKey] && classData.grades[gradeKey] !== 'none';
+                     const hasProgress = classData.progressScores && classData.progressScores[gradeKey];
+                     if (hasGrade || hasProgress) {
+                         submittedCount++;
+                     }
+                });
+                return { 
+                    id: student.id,
+                    name: student.name, 
+                    submittedCount: submittedCount,
+                    missingCount: classData.assignments.length - submittedCount
+                };
+            });
+
+            const totalAssignments = classData.assignments.length;
+            const studentsAtRisk = studentSubmissionCounts
+                .filter(s => totalAssignments > 0 && s.submittedCount < totalAssignments / 2)
+                .sort((a, b) => a.submittedCount - b.submittedCount);
+
+            const topPerformers = studentSubmissionCounts
+                .filter(s => s.missingCount <= 1)
+                .sort((a, b) => {
+                    const scoreB = calculateScores(b.id).totalScore;
+                    const scoreA = calculateScores(a.id).totalScore;
+                    if (scoreB !== scoreA) {
+                        return scoreB - scoreA;
+                    }
+                    return a.id - b.id; // Secondary sort by student ID (like student number)
+                });
+
+            // Render Lists
+            const atRiskList = document.getElementById('studentsAtRiskList');
+            atRiskList.innerHTML = '';
+            if (studentsAtRisk.length > 0) {
+                studentsAtRisk.forEach(s => {
+                    const li = document.createElement('li');
+                    li.textContent = `${s.name} (ค้าง ${s.missingCount} งาน)`;
+                    atRiskList.appendChild(li);
+                });
+            } else {
+                atRiskList.innerHTML = '<li>ไม่มีนักเรียนที่ส่งงานไม่ถึงครึ่ง 🎉</li>';
+            }
+
+            const topPerformersList = document.getElementById('topPerformersList');
+            topPerformersList.innerHTML = '';
+            if (topPerformers.length > 0) {
+                topPerformers.forEach(s => {
+                    const li = document.createElement('li');
+                    li.textContent = s.name;
+                    topPerformersList.appendChild(li);
+                });
+            } else {
+                topPerformersList.innerHTML = '<li>ยังไม่มีนักเรียนส่งงานครบ</li>';
+            }
+
+
+            // Render Charts
+            if(submissionChartInstance) submissionChartInstance.destroy();
+            const subCtx = document.getElementById('submissionChart').getContext('2d');
+            submissionChartInstance = new Chart(subCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['ส่งแล้ว', 'ยังไม่ส่ง'],
+                    datasets: [{
+                        data: [submittedCount, missingCount],
+                        backgroundColor: ['#10B981', '#EF4444'],
+                    }]
+                },
+                options: { responsive: true }
+            });
+
+            if(performanceChartInstance) performanceChartInstance.destroy();
+            const perfCtx = document.getElementById('performanceChart').getContext('2d');
+            performanceChartInstance = new Chart(perfCtx, {
+                type: 'bar',
+                data: {
+                    labels: assignmentLabels,
+                    datasets: [{
+                        label: 'อัตราการส่ง (%)',
+                        data: assignmentSubmissionRates,
+                        backgroundColor: '#4F46E5'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: { y: { beginAtZero: true, max: 100 } }
+                }
             });
         };
 
@@ -1779,6 +1984,33 @@
             reader.readAsArrayBuffer(file);
         };
 
+        const handleExportDashboard = () => {
+            const dashboardContent = document.getElementById('dashboardContent');
+            const exportButton = document.getElementById('exportDashboardBtn');
+            if (dashboardContent && exportButton) {
+                showToast('กำลังสร้างรูปภาพ...');
+                // Temporarily hide the button
+                exportButton.style.visibility = 'hidden';
+
+                html2canvas(dashboardContent, {
+                    scale: 2, // For higher resolution
+                    useCORS: true,
+                    backgroundColor: '#ffffff'
+                }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = 'dashboard-summary.jpg';
+                    link.href = canvas.toDataURL('image/jpeg', 0.95);
+                    link.click();
+                }).catch(err => {
+                    console.error('Error exporting dashboard:', err);
+                    showToast('เกิดข้อผิดพลาดในการสร้างรูปภาพ', true);
+                }).finally(() => {
+                    // Show the button again
+                    exportButton.style.visibility = 'visible';
+                });
+            }
+        };
+
         // --- INITIALIZATION ---
         undoBtn.addEventListener('click', handleUndo);
         redoBtn.addEventListener('click', handleRedo);
@@ -1788,6 +2020,13 @@
         viewSummaryBtn.addEventListener('click', handleViewSummary);
         clearDataBtn.addEventListener('click', handleClearData);
         deleteClassBtn.addEventListener('click', handleDeleteClass);
+        exportDashboardBtn.addEventListener('click', handleExportDashboard);
+
+        dashboardBtn.addEventListener('click', () => {
+            currentView = currentView === 'gradebook' ? 'dashboard' : 'gradebook';
+            dashboardBtn.textContent = currentView === 'gradebook' ? 'แดชบอร์ด' : 'ตารางคะแนน';
+            render();
+        });
 
         assignmentScoreInput.addEventListener('change', (e) => {
             commitChange(() => {
