@@ -410,8 +410,8 @@
                     <label for="bulkGradeFilter" class="ml-2 block text-sm text-gray-900">แสดงเฉพาะที่ยังไม่ส่ง</label>
                 </div>
             </div>
-            <div class="max-h-[70vh] overflow-y-auto">
-                <table class="w-full text-sm text-left text-gray-600"><tbody id="bulkGradeTableBody"></tbody></table>
+            <div id="bulkGradeTableBody" class="max-h-[70vh] overflow-y-auto">
+                <!-- Content will be rendered here -->
             </div>
             <div class="mt-6 text-right"><button id="closeBulkGradeModalBtn" class="bg-gray-300 hover:bg-gray-400 font-bold py-2 px-4 rounded-lg">ปิด</button></div>
         </div>
@@ -425,8 +425,8 @@
                     <label for="studentGradeFilter" class="ml-2 block text-sm text-gray-900">แสดงเฉพาะที่ยังไม่ส่ง</label>
                 </div>
             </div>
-            <div class="max-h-[70vh] overflow-y-auto">
-                <table class="w-full text-sm text-left text-gray-600"><tbody id="studentGradeTableBody"></tbody></table>
+            <div id="studentGradeTableBody" class="max-h-[70vh] overflow-y-auto">
+                <!-- Content will be rendered here -->
             </div>
             <div class="mt-6 text-right"><button id="closeStudentGradeModalBtn" class="bg-gray-300 hover:bg-gray-400 font-bold py-2 px-4 rounded-lg">ปิด</button></div>
         </div>
@@ -921,8 +921,8 @@
             const assignment = classData.assignments.find(a => a.id === assignmentId);
             if (!assignment) return;
             const modalTitle = document.getElementById('bulkGradeModalTitle');
-            const tbody = document.getElementById('bulkGradeTableBody');
-            tbody.innerHTML = '';
+            const container = document.getElementById('bulkGradeTableBody');
+            container.innerHTML = '';
             const filterCheckbox = document.getElementById('bulkGradeFilter');
             
             const studentsToGrade = classData.students.filter(student => {
@@ -939,13 +939,19 @@
 
             studentsToGrade.forEach(student => {
                 const currentGrade = classData.grades[`${student.id}-${assignment.id}`] || 'none';
-                const row = document.createElement('tr');
-                row.className = 'border-b';
+                const row = document.createElement('div');
+                row.className = 'grid grid-cols-3 gap-2 items-center py-2 border-b';
+                
                 let buttonsHtml = ['A', 'B', 'C', 'D', 'none'].map(status => {
                     const text = status === 'none' ? 'ยังไม่ส่ง' : status;
                     return `<button data-status="${status}" class="bulk-grade-btn status-${status} rounded-md shadow ${status === 'none' ? 'text-xs' : ''} ${currentGrade === status ? 'selected' : ''}">${text}</button>`;
                 }).join('');
-                row.innerHTML = `<td class="px-4 py-2"><button class="student-link-btn hover:underline">${student.name}</button></td><td class="px-4 py-2"><div class="flex justify-end gap-2">${buttonsHtml}</div></td>`;
+                
+                row.innerHTML = `
+                    <div class="col-span-1"><button class="student-link-btn hover:underline text-left">${student.name}</button></div>
+                    <div class="col-span-2"><div class="flex justify-end gap-1 sm:gap-2">${buttonsHtml}</div></div>
+                `;
+
                 row.querySelector('.student-link-btn').addEventListener('click', () => {
                     closeModal(document.getElementById('bulkGradeModal'));
                     handleStudentNameClick(student.id);
@@ -958,11 +964,10 @@
                             if (newStatus === 'none') delete classData.grades[gradeKey];
                             else classData.grades[gradeKey] = newStatus;
                         });
-                        // Re-render modal content without closing
                         renderBulkGradeModal(assignmentId);
                     });
                 });
-                tbody.appendChild(row);
+                container.appendChild(row);
             });
         };
 
@@ -971,8 +976,8 @@
             const student = classData.students.find(s => s.id === studentId);
             if (!student) return;
             const modalTitle = document.getElementById('studentGradeModalTitle');
-            const tbody = document.getElementById('studentGradeTableBody');
-            tbody.innerHTML = '';
+            const container = document.getElementById('studentGradeTableBody');
+            container.innerHTML = '';
             const filterCheckbox = document.getElementById('studentGradeFilter');
 
             const allAssignments = classData.assignments;
@@ -994,14 +999,20 @@
             assignmentsToGrade.forEach(assignment => {
                 const originalIndex = allAssignments.findIndex(a => a.id === assignment.id);
                 const currentGrade = classData.grades[`${student.id}-${assignment.id}`] || 'none';
-                const row = document.createElement('tr');
-                row.className = 'border-b';
+                const row = document.createElement('div');
+                row.className = 'grid grid-cols-3 gap-2 items-center py-2 border-b';
+                
                 let buttonsHtml = ['A', 'B', 'C', 'D', 'none'].map(status => {
                     const isSelected = currentGrade === status;
                     const text = status === 'none' ? 'ยังไม่ส่ง' : status;
                     return `<button data-status="${status}" class="bulk-grade-btn status-${status} rounded-md shadow hover:opacity-80 transition ${status === 'none' ? 'text-xs' : ''} ${isSelected ? 'selected' : ''}">${text}</button>`;
                 }).join('');
-                row.innerHTML = `<td class="px-4 py-2"><button class="assignment-link-btn hover:underline">${originalIndex + 1}. ${assignment.name}</button></td><td class="px-4 py-2"><div class="flex justify-end gap-2">${buttonsHtml}</div></td>`;
+                
+                row.innerHTML = `
+                    <div class="col-span-1"><button class="assignment-link-btn hover:underline text-left text-sm">${originalIndex + 1}. ${assignment.name}</button></div>
+                    <div class="col-span-2"><div class="flex justify-end gap-1 sm:gap-2">${buttonsHtml}</div></div>
+                `;
+
                 row.querySelector('.assignment-link-btn').addEventListener('click', () => {
                     closeModal(document.getElementById('studentGradeModal'));
                     handleAssignmentHeaderClick(assignment.id);
@@ -1017,7 +1028,7 @@
                         renderStudentGradeModal(studentId);
                     });
                 });
-                tbody.appendChild(row);
+                container.appendChild(row);
             });
         };
 
