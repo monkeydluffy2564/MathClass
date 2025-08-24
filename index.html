@@ -368,6 +368,8 @@
                                 <h3 class="text-sm font-semibold mb-2">นำเข้า/ส่งออก:</h3>
                                 <div class="flex flex-wrap gap-3 items-center">
                                     <button id="exportBtn" class="bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded-lg shadow">Export (สำรองข้อมูล)</button>
+									<button id="syncToSheetBtn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow">Sync to Google Sheets</button>
+									<button id="syncAllToSheetBtn" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow">Sync ทุกห้องเรียน</button>
                                     <button id="importBtn" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg shadow">Import (กู้ข้อมูล)</button>
                                     <input type="file" id="importFile" class="hidden" accept=".xlsx, .xls">
                                     <button id="customImportBtn" class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-lg shadow">Import (ข้อมูลดิบ)</button>
@@ -399,6 +401,12 @@
                             <button data-column="final" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">ปลายภาค</button>
                             <button data-column="midYear" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">กลางปี</button>
                             <button data-column="yearEnd" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">ปลายปี</button>
+                            <!-- MODIFIED: Added new column buttons -->
+                            <button data-column="notebook" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">สมุด</button>
+                            <button data-column="textbook" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">หนังสือเรียน</button>
+                            <button data-column="workbook" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">หนังสือแบบฝึกหัด</button>
+                            <button data-column="special" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">พิเศษ</button>
+                            <!-- END MODIFICATION -->
                             <button data-column="totalScore" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">รวม</button>
                             <button data-column="gpa" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">ผลการเรียน</button>
                         </div>
@@ -640,9 +648,14 @@
         const getNewClassData = () => ({
             students: [], assignments: [], specialColumns: [],
             grades: {}, examScores: {}, specialScores: {}, progressScores: {},
-            scoreConfig: { assignment: 50, midterm: 20, final: 30, midYear: 0, yearEnd: 0 },
-            columnVisibility: { assignmentScore: true, midterm: true, final: true, midYear: true, yearEnd: true, totalScore: true, gpa: true },
-            settings: { linkSemesters: false } // NEW: Per-class setting
+            checklistStatus: {}, 
+            scoreConfig: { assignment: 50, midterm: 20, final: 30, midYear: 0, yearEnd: 0, special: 0 }, // MODIFIED: Added special to scoreConfig
+            columnVisibility: { 
+                assignmentScore: true, midterm: true, final: true, midYear: true, yearEnd: true, 
+                notebook: true, textbook: true, workbook: true, special: true,
+                totalScore: true, gpa: true 
+            },
+            settings: { linkSemesters: false }
         });
         
         const getNewSemesterData = (name) => ({
@@ -878,9 +891,10 @@
             if (score >= 50) return 1.0; return 0.0;
         };
 
+        // MODIFIED: This function is updated to include new scoring logic.
         const calculateScores = (studentId, specificClassData = null) => {
             const classData = specificClassData || getCurrentClassData();
-            if (!classData) return { assignmentScore: 0, totalScore: 0, midterm: 0, final: 0, midYear: 0, yearEnd: 0, gpa: '0.0' };
+            if (!classData) return { assignmentScore: 0, totalScore: 0, midterm: 0, final: 0, midYear: 0, yearEnd: 0, special: 0, gpa: '0.0' };
             
             const assignmentsForGrading = classData.assignments.filter(assignment => {
                 return !classData.students.some(student => {
@@ -889,7 +903,7 @@
                 });
             });
 
-            const studentExams = classData.examScores[studentId] || { midterm: 0, final: 0, midYear: 0, yearEnd: 0 };
+            const studentExams = classData.examScores[studentId] || { midterm: 0, final: 0, midYear: 0, yearEnd: 0, special: 0 };
             
             let totalAssignmentPoints = 0;
             const totalWeight = assignmentsForGrading.reduce((sum, a) => sum + (a.weight || 1), 0);
@@ -906,12 +920,31 @@
 
             const roundedAssignmentScore = Math.ceil(totalAssignmentPoints);
 
+            // Calculate points from user-defined special columns
             let totalSpecialPoints = 0;
             classData.specialColumns.forEach(col => {
                 totalSpecialPoints += classData.specialScores[`${studentId}-${col.id}`] || 0;
             });
             
-            const totalScore = roundedAssignmentScore + (studentExams.midterm || 0) + (studentExams.final || 0) + (studentExams.midYear || 0) + (studentExams.yearEnd || 0) + totalSpecialPoints;
+            // NEW: Calculate points from checklist items
+            let checklistPoints = 0;
+            const checklistItems = ['notebook', 'textbook', 'workbook'];
+            checklistItems.forEach(item => {
+                if (classData.checklistStatus && classData.checklistStatus[`${studentId}-${item}`]) {
+                    checklistPoints += 1;
+                }
+            });
+
+            // MODIFIED: Calculate total score including all new points
+            const totalScore = roundedAssignmentScore + 
+                               (studentExams.midterm || 0) + 
+                               (studentExams.final || 0) + 
+                               (studentExams.midYear || 0) + 
+                               (studentExams.yearEnd || 0) + 
+                               (studentExams.special || 0) + // Added special numeric score
+                               totalSpecialPoints +
+                               checklistPoints; // Added checklist points
+
             const gpa = calculateGpa(totalScore > 100 ? 100 : totalScore);
             
             return {
@@ -921,6 +954,7 @@
                 final: studentExams.final || 0,
                 midYear: studentExams.midYear || 0,
                 yearEnd: studentExams.yearEnd || 0,
+                special: studentExams.special || 0, // Return special score
                 gpa: gpa.toFixed(1)
             };
         };
@@ -1120,10 +1154,10 @@
                     panel.classList.toggle('collapsed', !state.panelVisibility[panelId]);
                 }
             }
-            const classData = getCurrentClassData();
+            const currentClassData = getCurrentClassData();
             const linkCheckbox = document.getElementById('linkSemestersCheckbox');
-            if (classData && linkCheckbox) {
-                linkCheckbox.checked = classData.settings.linkSemesters;
+            if (currentClassData && linkCheckbox) {
+                linkCheckbox.checked = currentClassData.settings.linkSemesters;
             }
         };
 
@@ -1159,6 +1193,7 @@
             classTabsContainer.appendChild(addClassBtn);
         };
 
+        // MODIFIED: This function is updated to render the new table structure.
         const renderTable = () => {
             gradebookTable.innerHTML = '';
             const classData = getCurrentClassData();
@@ -1188,7 +1223,7 @@
             }
 
 
-            const { assignmentScore, midterm, final, midYear, yearEnd, totalScore, gpa } = classData.columnVisibility;
+            const { assignmentScore, midterm, final, midYear, yearEnd, notebook, textbook, workbook, special, totalScore, gpa } = classData.columnVisibility;
             const thead = document.createElement('thead');
             thead.className = "text-xs text-gray-700 uppercase";
             let headerRow = '<tr>';
@@ -1198,6 +1233,13 @@
             if (final) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">ปลายภาค</th>';
             if (midYear) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">กลางปี</th>';
             if (yearEnd) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">ปลายปี</th>';
+            
+            // Add new table headers
+            if (notebook) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">สมุด</th>';
+            if (textbook) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">หนังสือเรียน</th>';
+            if (workbook) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">หนังสือแบบฝึกหัด</th>';
+            if (special) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">พิเศษ</th>';
+            
             classData.specialColumns.forEach(col => {
                 if (classData.columnVisibility[`special-${col.id}`]) {
                     headerRow += `<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">${col.name}</th>`;
@@ -1253,6 +1295,28 @@
                 if (final) bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-12 text-center bg-gray-100 rounded p-1 ${scores.final === 0 ? 'zero-score' : ''}" data-student-id="${student.id}" data-exam-type="final" value="${scores.final}" min="0" max="${classData.scoreConfig.final}"></td>`;
                 if (midYear) bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-12 text-center bg-gray-100 rounded p-1 ${scores.midYear === 0 ? 'zero-score' : ''}" data-student-id="${student.id}" data-exam-type="midYear" value="${scores.midYear}" min="0" max="${classData.scoreConfig.midYear || ''}"></td>`;
                 if (yearEnd) bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-12 text-center bg-gray-100 rounded p-1 ${scores.yearEnd === 0 ? 'zero-score' : ''}" data-student-id="${student.id}" data-exam-type="yearEnd" value="${scores.yearEnd}" min="0" max="${classData.scoreConfig.yearEnd || ''}"></td>`;
+                
+                // Render new checklist and special score cells
+                const checklistItems = ['notebook', 'textbook', 'workbook'];
+                checklistItems.forEach(item => {
+                    if (classData.columnVisibility[item]) {
+                        const checklistKey = `${student.id}-${item}`;
+                        const isChecked = classData.checklistStatus && classData.checklistStatus[checklistKey];
+                        const checkmark = isChecked ? '✔' : '';
+                        const bgColor = isChecked ? 'bg-green-200' : 'bg-gray-200';
+                        const textColor = isChecked ? 'text-green-800' : 'text-gray-400';
+                        bodyRow += `<td class="p-1 text-center align-middle">
+                            <div class="checklist-cell square-box ${bgColor} ${textColor} font-bold rounded-md cursor-pointer" data-student-id="${student.id}" data-item-type="${item}">
+                                ${checkmark}
+                            </div>
+                        </td>`;
+                    }
+                });
+
+                if (special) {
+                    bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-12 text-center bg-gray-100 rounded p-1 ${scores.special === 0 ? 'zero-score' : ''}" data-student-id="${student.id}" data-exam-type="special" value="${scores.special}" min="0"></td>`;
+                }
+
                 classData.specialColumns.forEach(col => {
                      if (classData.columnVisibility[`special-${col.id}`]) {
                         const score = classData.specialScores[`${student.id}-${col.id}`] || 0;
@@ -1282,6 +1346,9 @@
 
             let actionRow = `<tr class="bg-gray-50 h-[38px]"><td class="sticky left-0 bg-gray-50 px-2 py-1"></td>`;
             if(assignmentScore) actionRow += '<td></td>'; if(midterm) actionRow += '<td></td>'; if(final) actionRow += '<td></td>'; if(midYear) actionRow += '<td></td>'; if(yearEnd) actionRow += '<td></td>';
+            // Add empty cells to action row for alignment
+            if(notebook) actionRow += '<td></td>'; if(textbook) actionRow += '<td></td>'; if(workbook) actionRow += '<td></td>'; if(special) actionRow += '<td></td>';
+            
             classData.specialColumns.forEach(col => {
                 if (classData.columnVisibility[`special-${col.id}`]) {
                      actionRow += `<td class="p-1 text-center align-middle">
@@ -1372,7 +1439,12 @@
             const container = document.getElementById('bulkGradeTableBody');
             container.innerHTML = '';
             const filterCheckbox = document.getElementById('bulkGradeFilter');
-            
+                        const trueUnsubmittedCount = classData.students.filter(student => {
+                const gradeKey = `${student.id}-${assignment.id}`;
+                const hasGrade = classData.grades[gradeKey];
+                const hasProgressScore = classData.progressScores && classData.progressScores[gradeKey] !== undefined && classData.progressScores[gradeKey] !== null && classData.progressScores[gradeKey] !== '';
+                return !hasGrade && !hasProgressScore;
+            }).length;
             const studentsToGrade = classData.students.filter(student => {
                 if (!filterCheckbox.checked) return true;
                 const gradeKey = `${student.id}-${assignment.id}`;
@@ -1382,7 +1454,7 @@
             });
 
             const unsubmittedCount = studentsToGrade.length;
-            modalTitle.innerHTML = `ให้คะแนนงาน: <span class="font-normal text-gray-600">${assignment.name}</span> <span class="text-sm font-normal text-red-500 ml-2">(${unsubmittedCount} คนที่ยังไม่ส่ง)</span>`;
+            modalTitle.innerHTML = `ให้คะแนนงาน: <span class="font-normal text-gray-600">${assignment.name}</span> <span class="text-sm font-normal text-red-500 ml-2">(${trueUnsubmittedCount} คนที่ยังไม่ส่ง)</span>`;
             modalTitle.dataset.assignmentId = assignmentId;
 
             studentsToGrade.forEach(student => {
@@ -1431,6 +1503,12 @@
             const filterCheckbox = document.getElementById('studentGradeFilter');
 
             const allAssignments = classData.assignments;
+			            const trueUnsubmittedCount = allAssignments.filter(assignment => {
+                const gradeKey = `${student.id}-${assignment.id}`;
+                const hasGrade = classData.grades[gradeKey];
+                const hasProgressScore = classData.progressScores && classData.progressScores[gradeKey] !== undefined && classData.progressScores[gradeKey] !== null && classData.progressScores[gradeKey] !== '';
+                return !hasGrade && !hasProgressScore;
+            }).length;
             let assignmentsToGrade = allAssignments;
 
             if (filterCheckbox.checked) {
@@ -1443,7 +1521,7 @@
             }
             
             const unsubmittedCount = assignmentsToGrade.length;
-            modalTitle.innerHTML = `ให้คะแนน: <span class="font-normal text-gray-600">${student.name}</span> <span class="text-sm font-normal text-red-500 ml-2">(เหลืองาน ${unsubmittedCount} ชิ้น)</span>`;
+                        modalTitle.innerHTML = `ให้คะแนน: <span class="font-normal text-gray-600">${student.name}</span> <span class="text-sm font-normal text-red-500 ml-2">(เหลืองาน ${trueUnsubmittedCount} ชิ้น)</span>`;
             modalTitle.dataset.studentId = studentId;
 
             assignmentsToGrade.forEach(assignment => {
@@ -2192,6 +2270,7 @@
             element.addEventListener('touchmove', () => clearTimeout(pressTimer));
         }
 
+        // MODIFIED: This function is updated to attach event listeners to new elements.
         function attachTableEventListeners() {
             document.querySelectorAll('.table-cell-status').forEach(cell => cell.addEventListener('click', (e) => {
                 currentEdit = { studentId: parseInt(e.currentTarget.dataset.studentId), assignmentId: parseInt(e.currentTarget.dataset.assignmentId) };
@@ -2208,6 +2287,8 @@
                 cell.addEventListener('click', (e) => handleStudentNameClick(parseInt(e.currentTarget.dataset.studentId)));
             });
             document.querySelectorAll('.remove-student-btn').forEach(btn => btn.addEventListener('click', (e) => handleRemoveStudent(e.currentTarget.dataset.studentId)));
+            
+            // This listener now handles 'special' score input as well
             document.querySelectorAll('input[data-exam-type]').forEach(input => input.addEventListener('change', (e) => {
                 commitChange(() => {
                     const classData = getCurrentClassData();
@@ -2217,10 +2298,11 @@
                     if (maxScore && value > maxScore) value = maxScore; 
                     if (value < 0) value = 0;
                     e.target.value = value;
-                    if (!classData.examScores[studentId]) classData.examScores[studentId] = { midterm: 0, final: 0, midYear: 0, yearEnd: 0 };
+                    if (!classData.examScores[studentId]) classData.examScores[studentId] = { midterm: 0, final: 0, midYear: 0, yearEnd: 0, special: 0 };
                     classData.examScores[studentId][examType] = value;
                 });
             }));
+
             document.querySelectorAll('input[data-column-id]').forEach(input => input.addEventListener('change', (e) => {
                 commitChange(() => {
                     const classData = getCurrentClassData();
@@ -2297,6 +2379,28 @@
                     }
                 });
             });
+
+            // Add event listener for new checklist cells
+            document.querySelectorAll('.checklist-cell').forEach(cell => {
+                cell.addEventListener('click', e => {
+                    const studentId = e.currentTarget.dataset.studentId;
+                    const itemType = e.currentTarget.dataset.itemType;
+                    
+                    commitChange(() => {
+                        const classData = getCurrentClassData();
+                        if (!classData.checklistStatus) {
+                            classData.checklistStatus = {};
+                        }
+                        const key = `${studentId}-${itemType}`;
+                        // Toggle the status
+                        if (classData.checklistStatus[key]) {
+                            delete classData.checklistStatus[key];
+                        } else {
+                            classData.checklistStatus[key] = true;
+                        }
+                    });
+                });
+            });
         }
         
         // --- DRAG & DROP HANDLERS ---
@@ -2336,6 +2440,94 @@
             }
             return false;
         }
+
+const prepareDataForSheet = (classId, semesterData) => {
+    const classData = semesterData.classData[classId];
+    if (!classData) return null;
+
+    const currentClass = semesterData.classes.find(c => c.id === classId);
+
+    const studentsData = classData.students.map(student => {
+        const studentGrades = {};
+        classData.assignments.forEach(assignment => {
+            const gradeKey = `${student.id}-${assignment.id}`;
+            const progressScore = classData.progressScores ? classData.progressScores[gradeKey] : undefined;
+            if (progressScore !== undefined && progressScore !== null && progressScore !== '') {
+                studentGrades[assignment.id] = progressScore;
+            } else {
+                studentGrades[assignment.id] = classData.grades[gradeKey] || 'none';
+            }
+        });
+
+        const checklistData = {};
+        const checklistItems = ['notebook', 'textbook', 'workbook']; // MODIFIED: Removed 'special'
+        checklistItems.forEach(item => {
+            const checklistKey = `${student.id}-${item}`;
+            const isChecked = classData.checklistStatus && classData.checklistStatus[checklistKey];
+            checklistData[item] = isChecked ? '✔' : '-';
+        });
+
+        return {
+            id: student.id,
+            name: student.name,
+            scores: calculateScores(student.id, classData),
+            grades: studentGrades,
+            checklist: checklistData
+        };
+    });
+
+    return {
+        className: currentClass.name,
+        assignments: classData.assignments,
+        students: studentsData
+    };
+};
+
+const syncToGoogleSheet = () => {
+    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwqln9l4L_xUjfEQPcllAtDYY8GBRmG2uCq50gF4aibyR_UQRklfTdp_aveorhAKpks/exec'; 
+
+    const semesterData = getCurrentSemesterData();
+    const currentClassId = semesterData.currentClassId;
+    const dataToSend = prepareDataForSheet(currentClassId, semesterData);
+
+    if (!dataToSend) {
+        showToast('ไม่มีข้อมูลที่จะส่งออก', true);
+        return;
+    }
+    showToast('กำลัง Sync ข้อมูลห้องปัจจุบัน...');
+
+    fetch(WEB_APP_URL, {
+        method: 'POST', mode: 'no-cors', cache: 'no-cache',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([dataToSend])
+    })
+    .then(() => { showToast('Sync ข้อมูลสำเร็จ!'); closeModal(settingsModal); })
+    .catch(error => { console.error('Error syncing to Google Sheet:', error); showToast('เกิดข้อผิดพลาดในการ Sync', true); });
+};
+
+const syncAllClassesToSheet = () => {
+    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwqln9l4L_xUjfEQPcllAtDYY8GBRmG2uCq50gF4aibyR_UQRklfTdp_aveorhAKpks/exec'; 
+    showToast('กำลังรวบรวมข้อมูลทุกห้องเรียน...');
+    const semesterData = getCurrentSemesterData();
+    const allDataToSend = semesterData.classes.map(cls => {
+        return prepareDataForSheet(cls.id, semesterData);
+    }).filter(data => data !== null);
+
+    if (allDataToSend.length === 0) {
+        showToast('ไม่พบข้อมูลในภาคเรียนนี้', true);
+        return;
+    }
+
+    showToast(`กำลัง Sync ข้อมูล ${allDataToSend.length} ห้องเรียน...`);
+
+    fetch(WEB_APP_URL, {
+        method: 'POST', mode: 'no-cors', cache: 'no-cache',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(allDataToSend)
+    })
+    .then(() => { showToast('Sync ทุกห้องเรียนสำเร็จ!'); closeModal(settingsModal); })
+    .catch(error => { console.error('Error syncing all classes:', error); showToast('เกิดข้อผิดพลาดในการ Sync', true); });
+};
 
         // --- EXPORT/IMPORT HANDLERS ---
         const handleExport = () => {
@@ -2510,13 +2702,13 @@
                                             if (header === 'กลางภาค') {
                                                 const score = parseInt(cellValue, 10);
                                                 if (!isNaN(score)) {
-                                                    if (!classData.examScores[newStudentId]) classData.examScores[newStudentId] = { midterm: 0, final: 0, midYear: 0, yearEnd: 0 };
+                                                    if (!classData.examScores[newStudentId]) classData.examScores[newStudentId] = { midterm: 0, final: 0, midYear: 0, yearEnd: 0, special: 0 };
                                                     classData.examScores[newStudentId].midterm = score;
                                                 }
                                             } else if (header === 'ปลายภาค') {
                                                  const score = parseInt(cellValue, 10);
                                                 if (!isNaN(score)) {
-                                                    if (!classData.examScores[newStudentId]) classData.examScores[newStudentId] = { midterm: 0, final: 0, midYear: 0, yearEnd: 0 };
+                                                    if (!classData.examScores[newStudentId]) classData.examScores[newStudentId] = { midterm: 0, final: 0, midYear: 0, yearEnd: 0, special: 0 };
                                                     classData.examScores[newStudentId].final = score;
                                                 }
                                             // Handle assignment grades/scores
@@ -2705,30 +2897,47 @@
         };
         
         const handleRemedialGrade = async (key, assignmentId) => {
-            const contentDiv = document.getElementById('failedStudentDetailContent');
-            const scrollPosition = contentDiv ? contentDiv.scrollTop : 0;
-
             let entry = state.failedStudentWarehouse[key] || state.resolvedFailedStudents[key];
             if (entry) {
-                if (!entry.remedialGrades) {
-                    entry.remedialGrades = {};
-                }
+                if (!entry.remedialGrades) entry.remedialGrades = {};
                 entry.remedialGrades[assignmentId] = 'D';
-                await saveStateToFirebase(); 
-                renderFailedStudentDetailModal(key, scrollPosition);
+                await saveStateToFirebase();
             }
         };
 
         const handleRevertRemedialGrade = async (key, assignmentId) => {
-            const contentDiv = document.getElementById('failedStudentDetailContent');
-            const scrollPosition = contentDiv ? contentDiv.scrollTop : 0;
-
             let entry = state.failedStudentWarehouse[key] || state.resolvedFailedStudents[key];
             if (entry && entry.remedialGrades) {
                 delete entry.remedialGrades[assignmentId];
                 await saveStateToFirebase();
-                renderFailedStudentDetailModal(key, scrollPosition);
             }
+        };
+
+const updateWarehouseDetailScores = (key) => {
+            const entry = state.failedStudentWarehouse[key] || state.resolvedFailedStudents[key];
+            if (!entry) return;
+
+            const yearData = state.academicYears.find(y => y.year === entry.year);
+            const semesterData = yearData.semesters.find(s => s.id === entry.semesterId);
+            const classData = semesterData.classData[entry.classId];
+            const student = classData.students.find(s => s.id === entry.studentId);
+            if (!student) return;
+
+            // สร้างข้อมูลชั่วคราวเพื่อคำนวณคะแนนใหม่
+            const tempClassData = JSON.parse(JSON.stringify(classData));
+            if (entry.remedialGrades) {
+                for (const assignmentId in entry.remedialGrades) {
+                    const gradeKey = `${student.id}-${assignmentId}`;
+                    tempClassData.grades[gradeKey] = entry.remedialGrades[assignmentId];
+                }
+            }
+
+            const newScores = calculateScores(student.id, tempClassData);
+
+            // อัปเดตตัวเลขในกล่องคะแนน
+            document.getElementById('warehouse-total-score').textContent = newScores.totalScore;
+            document.getElementById('warehouse-gpa').textContent = newScores.gpa;
+            document.getElementById('warehouse-assignment-score').textContent = newScores.assignmentScore;
         };
 
         const renderFailedStudentDetailModal = (key, scrollPosition = 0) => {
@@ -2758,14 +2967,20 @@
             const scores = calculateScores(student.id, tempClassData);
 
             const assignmentsToShow = classData.assignments.filter(assignment => {
-                if (showAll) {
-                    return true;
-                }
-                const gradeKey = `${student.id}-${assignment.id}`;
-                const originalGrade = classData.grades[gradeKey] || 'none';
-                const hasRemedialGrade = entry.remedialGrades && entry.remedialGrades[assignment.id];
-                return originalGrade === 'none' || hasRemedialGrade;
-            });
+    if (showAll) {
+        return true;
+    }
+    const gradeKey = `${student.id}-${assignment.id}`;
+    const originalGrade = classData.grades[gradeKey] || 'none';
+    const hasRemedialGrade = entry.remedialGrades && entry.remedialGrades[assignment.id];
+
+    // --- เพิ่มการตรวจสอบ progressScore ---
+    const progressScore = classData.progressScores ? classData.progressScores[gradeKey] : undefined;
+    const hasProgressScore = progressScore !== undefined && progressScore !== null && progressScore !== '';
+
+    // เงื่อนไขใหม่: จะแสดงก็ต่อเมื่อ (มีการแก้งาน) หรือ (ยังไม่มีเกรด และ ยังไม่มีคะแนนความก้าวหน้า)
+    return hasRemedialGrade || (originalGrade === 'none' && !hasProgressScore);
+});
 
             let tableRows = '';
             assignmentsToShow.forEach((assignment, index) => {
@@ -2796,7 +3011,7 @@
                 } else if (originalGrade === 'none') {
                     remedialButtonHtml = `<td class="p-2 text-center">
                         <button class="remedial-grade-btn bg-yellow-400 hover:bg-yellow-500 text-yellow-800 text-xs font-bold py-1 px-2 rounded" data-key="${key}" data-assignment-id="${assignment.id}">
-                            แก้ 0 (D)
+                            แก้งาน
                         </button>
                     </td>`;
                 }
@@ -2820,10 +3035,11 @@
                         <h4 class="text-lg font-bold">${student.name}</h4>
                         <p class="text-gray-600">${entry.className} / ${entry.semesterName} ปีการศึกษา ${entry.year}</p>
                     </div>
+					
                     <div class="grid grid-cols-3 gap-4 text-center">
-                        <div class="bg-red-100 p-3 rounded-lg"><p class="text-sm text-red-700">คะแนนรวม</p><p class="text-2xl font-bold text-red-800">${scores.totalScore}</p></div>
-                        <div class="bg-red-100 p-3 rounded-lg"><p class="text-sm text-red-700">ผลการเรียน</p><p class="text-2xl font-bold text-red-800">${scores.gpa}</p></div>
-                        <div class="bg-red-100 p-3 rounded-lg"><p class="text-sm text-red-700">คะแนนเก็บ</p><p class="text-2xl font-bold text-red-800">${scores.assignmentScore}</p></div>
+                        <div class="bg-red-100 p-3 rounded-lg"><p class="text-sm text-red-700">คะแนนรวม</p><p class="text-2xl font-bold text-red-800" id="warehouse-total-score">${scores.totalScore}</p></div>
+                        <div class="bg-red-100 p-3 rounded-lg"><p class="text-sm text-red-700">ผลการเรียน</p><p class="text-2xl font-bold text-red-800" id="warehouse-gpa">${scores.gpa}</p></div>
+                        <div class="bg-red-100 p-3 rounded-lg"><p class="text-sm text-red-700">คะแนนเก็บ</p><p class="text-2xl font-bold text-red-800" id="warehouse-assignment-score">${scores.assignmentScore}</p></div>
                     </div>
                     <div>
                         <div class="flex justify-between items-center mb-2">
@@ -2860,22 +3076,63 @@
                 await saveStateToFirebase();
                 renderFailedStudentDetailModal(key, currentScroll);
             });
+            
+            // --- ส่วนจัดการปุ่ม (แก้ไขใหม่ทั้งหมด) ---
+            const attachButtonListeners = (container) => {
+                // ปุ่ม "แก้ 0"
+                container.querySelectorAll('.remedial-grade-btn').forEach(btn => {
+                    // ใช้ .onclick เพื่อป้องกันการผูก event ซ้ำซ้อน
+                    btn.onclick = async (e) => {
+                        const button = e.currentTarget;
+                        const key = button.dataset.key;
+                        const assignmentId = button.dataset.assignmentId;
 
-            contentDiv.querySelectorAll('.remedial-grade-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const key = e.currentTarget.dataset.key;
-                    const assignmentId = e.currentTarget.dataset.assignmentId;
-                    handleRemedialGrade(key, assignmentId);
-                });
-            });
+                        await handleRemedialGrade(key, assignmentId);
 
-            contentDiv.querySelectorAll('.revert-remedial-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const key = e.currentTarget.dataset.key;
-                    const assignmentId = e.currentTarget.dataset.assignmentId;
-                    handleRevertRemedialGrade(key, assignmentId);
+                        const row = button.closest('tr');
+                        if (row) {
+                            const statusCell = row.querySelector('span.rounded-full');
+                            statusCell.className = 'px-2 py-1 text-xs font-semibold rounded-full status-D';
+                            statusCell.textContent = 'D';
+                            
+                            const buttonCell = button.parentElement;
+                            buttonCell.innerHTML = `<button class="revert-remedial-btn bg-gray-400 hover:bg-gray-500 text-white text-xs font-bold py-1 px-2 rounded" data-key="${key}" data-assignment-id="${assignmentId}">ยกเลิก</button>`;
+                            
+                            attachButtonListeners(row); 
+                        }
+                        
+                        updateWarehouseDetailScores(key);
+                    };
                 });
-            });
+
+                // ปุ่ม "ยกเลิก"
+                container.querySelectorAll('.revert-remedial-btn').forEach(btn => {
+                    // ใช้ .onclick เพื่อป้องกันการผูก event ซ้ำซ้อน
+                    btn.onclick = async (e) => {
+                        const button = e.currentTarget;
+                        const key = button.dataset.key;
+                        const assignmentId = button.dataset.assignmentId;
+
+                        await handleRevertRemedialGrade(key, assignmentId);
+
+                        const row = button.closest('tr');
+                        if (row) {
+                            const statusCell = row.querySelector('span.rounded-full');
+                            statusCell.className = 'px-2 py-1 text-xs font-semibold rounded-full status-none';
+                            statusCell.textContent = 'ยังไม่ส่ง';
+
+                            const buttonCell = button.parentElement;
+                            buttonCell.innerHTML = `<button class="remedial-grade-btn bg-yellow-400 hover:bg-yellow-500 text-yellow-800 text-xs font-bold py-1 px-2 rounded" data-key="${key}" data-assignment-id="${assignmentId}">แก้งาน</button>`;
+                            
+                            attachButtonListeners(row);
+                        }
+                        
+                        updateWarehouseDetailScores(key);
+                    };
+                });
+            };
+
+            attachButtonListeners(contentDiv);
 
             contentDiv.scrollTop = scrollPosition;
 
@@ -3030,7 +3287,7 @@
                     let value = parseInt(e.target.value);
                     if (isNaN(value) || value < 0) value = 0;
                     if (!classData.scoreConfig) {
-                         classData.scoreConfig = { assignment: 50, midterm: 20, final: 30, midYear: 0, yearEnd: 0 };
+                         classData.scoreConfig = { assignment: 50, midterm: 20, final: 30, midYear: 0, yearEnd: 0, special: 0 };
                     }
                     classData.scoreConfig.assignment = value;
                 }
@@ -3038,6 +3295,8 @@
         });
         
         exportBtn.addEventListener('click', handleExport);
+		document.getElementById('syncToSheetBtn').addEventListener('click', syncToGoogleSheet);
+		document.getElementById('syncAllToSheetBtn').addEventListener('click', syncAllClassesToSheet);
         importBtn.addEventListener('click', () => importFile.click());
         importFile.addEventListener('change', handleImport);
         customImportBtn.addEventListener('click', () => customImportFile.click());
