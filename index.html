@@ -199,6 +199,9 @@
             color: #ef4444;
             font-weight: 700;
         }
+        .gpa-zero-bg {
+            background-color: #fee2e2 !important; /* Light red background for GPA 0.0 */
+        }
         /* Custom scrollbar for horizontal scrolling tabs on mobile */
         .no-scrollbar::-webkit-scrollbar {
             display: none;
@@ -394,6 +397,8 @@
                             <button data-column="assignmentScore" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">คะแนนเก็บ</button>
                             <button data-column="midterm" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">กลางภาค</button>
                             <button data-column="final" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">ปลายภาค</button>
+                            <button data-column="midYear" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">กลางปี</button>
+                            <button data-column="yearEnd" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">ปลายปี</button>
                             <button data-column="totalScore" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">รวม</button>
                             <button data-column="gpa" class="toggle-column-btn text-sm font-bold py-2 px-3 rounded-lg shadow">ผลการเรียน</button>
                         </div>
@@ -635,8 +640,8 @@
         const getNewClassData = () => ({
             students: [], assignments: [], specialColumns: [],
             grades: {}, examScores: {}, specialScores: {}, progressScores: {},
-            scoreConfig: { assignment: 50, midterm: 20, final: 30 },
-            columnVisibility: { assignmentScore: true, midterm: true, final: true, totalScore: true, gpa: true },
+            scoreConfig: { assignment: 50, midterm: 20, final: 30, midYear: 0, yearEnd: 0 },
+            columnVisibility: { assignmentScore: true, midterm: true, final: true, midYear: true, yearEnd: true, totalScore: true, gpa: true },
             settings: { linkSemesters: false } // NEW: Per-class setting
         });
         
@@ -855,7 +860,7 @@
 
         const calculateScores = (studentId, specificClassData = null) => {
             const classData = specificClassData || getCurrentClassData();
-            if (!classData) return { assignmentScore: 0, totalScore: 0, midterm: 0, final: 0, gpa: '0.0' };
+            if (!classData) return { assignmentScore: 0, totalScore: 0, midterm: 0, final: 0, midYear: 0, yearEnd: 0, gpa: '0.0' };
             
             const assignmentsForGrading = classData.assignments.filter(assignment => {
                 return !classData.students.some(student => {
@@ -864,7 +869,7 @@
                 });
             });
 
-            const studentExams = classData.examScores[studentId] || { midterm: 0, final: 0 };
+            const studentExams = classData.examScores[studentId] || { midterm: 0, final: 0, midYear: 0, yearEnd: 0 };
             
             let totalAssignmentPoints = 0;
             const totalWeight = assignmentsForGrading.reduce((sum, a) => sum + (a.weight || 1), 0);
@@ -886,7 +891,7 @@
                 totalSpecialPoints += classData.specialScores[`${studentId}-${col.id}`] || 0;
             });
             
-            const totalScore = roundedAssignmentScore + (studentExams.midterm || 0) + (studentExams.final || 0) + totalSpecialPoints;
+            const totalScore = roundedAssignmentScore + (studentExams.midterm || 0) + (studentExams.final || 0) + (studentExams.midYear || 0) + (studentExams.yearEnd || 0) + totalSpecialPoints;
             const gpa = calculateGpa(totalScore > 100 ? 100 : totalScore);
             
             return {
@@ -894,6 +899,8 @@
                 totalScore: parseFloat(totalScore.toFixed(2)),
                 midterm: studentExams.midterm || 0,
                 final: studentExams.final || 0,
+                midYear: studentExams.midYear || 0,
+                yearEnd: studentExams.yearEnd || 0,
                 gpa: gpa.toFixed(1)
             };
         };
@@ -903,39 +910,45 @@
             if (!state || !state.mainTitle) return;
             mainTitle.textContent = state.mainTitle;
             renderContextSelectors();
-            renderClassTabs();
-            
+
+            const quickActionsDiv = document.getElementById('quickActionsContainer');
+            const searchBarDiv = document.getElementById('searchBarContainer');
+
             gradebookView.classList.add('hidden');
             dashboardView.classList.add('hidden');
             studentReportView.classList.add('hidden');
             warehouseView.classList.add('hidden');
-            searchInput.parentElement.parentElement.classList.add('hidden');
+            classTabsContainer.classList.add('hidden');
+            quickActionsDiv.classList.add('hidden');
+            searchBarDiv.classList.add('hidden');
 
-            dashboardBtn.textContent = currentView === 'gradebook' ? 'ภาพรวม' : 'ตารางคะแนน';
-            
-            const actionButtons = [addAssignmentBtn, viewSummaryBtn];
             const semesterData = getCurrentSemesterData();
             const hasData = semesterData && semesterData.classes.length > 0;
 
-            actionButtons.forEach(btn => btn.classList.toggle('hidden', !hasData));
-            classTabsContainer.classList.toggle('hidden', !hasData);
-
-            if (currentView === 'gradebook' && hasData) {
-                gradebookView.classList.remove('hidden');
-                searchInput.parentElement.parentElement.classList.remove('hidden');
-                searchInput.placeholder = "ค้นหาชื่อนักเรียน...";
-                renderTable();
-            } else if (currentView === 'dashboard' && hasData) {
-                dashboardView.classList.remove('hidden');
-                renderDashboard();
-            } else if (currentView === 'studentReport' && hasData) {
-                 studentReportView.classList.remove('hidden');
-                 renderStudentReport(state.currentStudentIdForReport);
-            } else if (currentView === 'warehouse') {
+            if (currentView === 'warehouse') {
                 warehouseView.classList.remove('hidden');
-                searchInput.parentElement.parentElement.classList.remove('hidden');
+                searchBarDiv.classList.remove('hidden');
                 searchInput.placeholder = "ค้นหาในคลัง...";
                 renderWarehouseView();
+            } else if (currentView === 'studentReport' && hasData) {
+                studentReportView.classList.remove('hidden');
+                renderStudentReport(state.currentStudentIdForReport);
+            } else if (hasData) {
+                classTabsContainer.classList.remove('hidden');
+                quickActionsDiv.classList.remove('hidden');
+                searchBarDiv.classList.remove('hidden');
+                searchInput.placeholder = "ค้นหาชื่อนักเรียน...";
+                renderClassTabs();
+
+                if (currentView === 'dashboard') {
+                    dashboardView.classList.remove('hidden');
+                    dashboardBtn.textContent = 'ตารางคะแนน';
+                    renderDashboard();
+                } else { 
+                    gradebookView.classList.remove('hidden');
+                    dashboardBtn.textContent = 'ภาพรวม';
+                    renderTable();
+                }
             } else {
                 gradebookView.classList.remove('hidden');
                 gradebookView.innerHTML = `<div class="text-center p-10 bg-white rounded-lg shadow-md">
@@ -957,6 +970,23 @@
         
         const renderContextSelectors = () => {
             contextHeader.innerHTML = '';
+
+            if (currentView === 'warehouse') {
+                const backBtn = document.createElement('button');
+                backBtn.id = "backToGradebookBtn";
+                backBtn.className = 'bg-gray-500 hover:bg-gray-600 text-white text-sm font-bold py-1.5 px-3 rounded-lg shadow flex items-center';
+                backBtn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                    กลับไปหน้าหลัก`;
+                backBtn.addEventListener('click', () => {
+                    currentView = 'gradebook';
+                    render();
+                });
+                contextHeader.appendChild(backBtn);
+                return; 
+            }
 
             // --- Year Selector ---
             const yearWrapper = document.createElement('div');
@@ -1040,7 +1070,6 @@
             warehouseBtn.textContent = `คลังนักเรียนติด 0 (${warehouseCount})`;
             warehouseBtn.addEventListener('click', () => {
                 currentView = 'warehouse';
-                currentWarehouseView = 'failed';
                 render();
             });
             contextHeader.appendChild(warehouseBtn);
@@ -1126,7 +1155,7 @@
             }
 
 
-            const { assignmentScore, midterm, final, totalScore, gpa } = classData.columnVisibility;
+            const { assignmentScore, midterm, final, midYear, yearEnd, totalScore, gpa } = classData.columnVisibility;
             const thead = document.createElement('thead');
             thead.className = "text-xs text-gray-700 uppercase";
             let headerRow = '<tr>';
@@ -1134,6 +1163,8 @@
             if (assignmentScore) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">คะแนนเก็บ</th>';
             if (midterm) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">กลางภาค</th>';
             if (final) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">ปลายภาค</th>';
+            if (midYear) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">กลางปี</th>';
+            if (yearEnd) headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">ปลายปี</th>';
             classData.specialColumns.forEach(col => {
                 if (classData.columnVisibility[`special-${col.id}`]) {
                     headerRow += `<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-gray-50">${col.name}</th>`;
@@ -1166,6 +1197,7 @@
                 const scores = calculateScores(student.id);
                 const isComplete = isSubmissionComplete(student.id);
                 const cursorClass = state.sortConfig.studentSort === 'default' ? 'cursor-grab' : '';
+                const gpaZeroClass = scores.gpa === '0.0' ? 'gpa-zero-bg' : '';
                 
                 let averageGpaCell = '';
                 if (isLinkedAndSecondSemester && gpa) {
@@ -1182,14 +1214,16 @@
                 }
 
                 let bodyRow = `<tr class="student-row bg-white border-b hover:bg-gray-50 ${isComplete ? 'perfect-submission' : ''} ${cursorClass}" draggable="true" data-student-id="${student.id}">`;
-                bodyRow += `<td class="student-name-cell px-2 py-1 font-medium text-gray-900 whitespace-nowrap bg-white align-middle cursor-pointer hover:bg-blue-50" data-student-id="${student.id}">${student.name}</td>`;
+                bodyRow += `<td class="student-name-cell px-2 py-1 font-medium text-gray-900 whitespace-nowrap bg-white align-middle cursor-pointer hover:bg-blue-50 ${gpaZeroClass}" data-student-id="${student.id}">${student.name}</td>`;
                 if (assignmentScore) bodyRow += `<td class="px-2 py-1 text-center font-semibold text-blue-600 align-middle ${scores.assignmentScore === 0 ? 'zero-score' : ''}">${scores.assignmentScore}</td>`;
                 if (midterm) bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-12 text-center bg-gray-100 rounded p-1 ${scores.midterm === 0 ? 'zero-score' : ''}" data-student-id="${student.id}" data-exam-type="midterm" value="${scores.midterm}" min="0" max="${classData.scoreConfig.midterm}"></td>`;
                 if (final) bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-12 text-center bg-gray-100 rounded p-1 ${scores.final === 0 ? 'zero-score' : ''}" data-student-id="${student.id}" data-exam-type="final" value="${scores.final}" min="0" max="${classData.scoreConfig.final}"></td>`;
+                if (midYear) bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-12 text-center bg-gray-100 rounded p-1 ${scores.midYear === 0 ? 'zero-score' : ''}" data-student-id="${student.id}" data-exam-type="midYear" value="${scores.midYear}" min="0" max="${classData.scoreConfig.midYear || ''}"></td>`;
+                if (yearEnd) bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-12 text-center bg-gray-100 rounded p-1 ${scores.yearEnd === 0 ? 'zero-score' : ''}" data-student-id="${student.id}" data-exam-type="yearEnd" value="${scores.yearEnd}" min="0" max="${classData.scoreConfig.yearEnd || ''}"></td>`;
                 classData.specialColumns.forEach(col => {
                      if (classData.columnVisibility[`special-${col.id}`]) {
                         const score = classData.specialScores[`${student.id}-${col.id}`] || 0;
-                        bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-16 text-center bg-gray-100 rounded p-1 ${score === 0 ? 'zero-score' : ''}" data-student-id="${student.id}" data-column-id="${col.id}" value="${score}"></td>`;
+                        bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-16 text-center bg-gray-100 rounded p-1" data-student-id="${student.id}" data-column-id="${col.id}" value="${score}"></td>`;
                      }
                 });
                 if (totalScore) bodyRow += `<td class="px-2 py-1 text-center font-bold text-lg text-green-700 align-middle ${scores.totalScore === 0 ? 'zero-score' : ''}">${scores.totalScore}</td>`;
@@ -1214,7 +1248,7 @@
             });
 
             let actionRow = `<tr class="bg-gray-50 h-[38px]"><td class="sticky left-0 bg-gray-50 px-2 py-1"></td>`;
-            if(assignmentScore) actionRow += '<td></td>'; if(midterm) actionRow += '<td></td>'; if(final) actionRow += '<td></td>';
+            if(assignmentScore) actionRow += '<td></td>'; if(midterm) actionRow += '<td></td>'; if(final) actionRow += '<td></td>'; if(midYear) actionRow += '<td></td>'; if(yearEnd) actionRow += '<td></td>';
             classData.specialColumns.forEach(col => {
                 if (classData.columnVisibility[`special-${col.id}`]) {
                      actionRow += `<td class="p-1 text-center align-middle">
@@ -2147,9 +2181,10 @@
                     const { studentId, examType } = e.target.dataset;
                     let value = parseInt(e.target.value) || 0;
                     const maxScore = classData.scoreConfig[examType];
-                    if (value > maxScore) value = maxScore; if (value < 0) value = 0;
+                    if (maxScore && value > maxScore) value = maxScore; 
+                    if (value < 0) value = 0;
                     e.target.value = value;
-                    if (!classData.examScores[studentId]) classData.examScores[studentId] = { midterm: 0, final: 0 };
+                    if (!classData.examScores[studentId]) classData.examScores[studentId] = { midterm: 0, final: 0, midYear: 0, yearEnd: 0 };
                     classData.examScores[studentId][examType] = value;
                 });
             }));
@@ -2442,13 +2477,13 @@
                                             if (header === 'กลางภาค') {
                                                 const score = parseInt(cellValue, 10);
                                                 if (!isNaN(score)) {
-                                                    if (!classData.examScores[newStudentId]) classData.examScores[newStudentId] = { midterm: 0, final: 0 };
+                                                    if (!classData.examScores[newStudentId]) classData.examScores[newStudentId] = { midterm: 0, final: 0, midYear: 0, yearEnd: 0 };
                                                     classData.examScores[newStudentId].midterm = score;
                                                 }
                                             } else if (header === 'ปลายภาค') {
                                                  const score = parseInt(cellValue, 10);
                                                 if (!isNaN(score)) {
-                                                    if (!classData.examScores[newStudentId]) classData.examScores[newStudentId] = { midterm: 0, final: 0 };
+                                                    if (!classData.examScores[newStudentId]) classData.examScores[newStudentId] = { midterm: 0, final: 0, midYear: 0, yearEnd: 0 };
                                                     classData.examScores[newStudentId].final = score;
                                                 }
                                             // Handle assignment grades/scores
@@ -2834,7 +2869,7 @@
                     let value = parseInt(e.target.value);
                     if (isNaN(value) || value < 0) value = 0;
                     if (!classData.scoreConfig) {
-                         classData.scoreConfig = { assignment: 50, midterm: 20, final: 30 };
+                         classData.scoreConfig = { assignment: 50, midterm: 20, final: 30, midYear: 0, yearEnd: 0 };
                     }
                     classData.scoreConfig.assignment = value;
                 }
@@ -2996,4 +3031,4 @@
 </script>
 
 </body>
-</ht
+</html>
