@@ -224,7 +224,7 @@
                     <!-- Year and Semester selectors will be rendered here -->
                 </div>
             </div>
-            <div class="flex items-center gap-2 self-end sm:self-center">
+            <div id="topRightButtons" class="flex items-center gap-2 self-end sm:self-center">
                 <button id="undoBtn" class="p-2 rounded-full hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed" title="ย้อนกลับ (Undo)">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="currentColor" viewBox="0 0 24 24"><path d="M12.5 8C9.81 8 7.45 8.99 5.6 10.6L2 7V16H11L7.38 12.38C8.77 11.22 10.54 10.5 12.5 10.5C16.04 10.5 19.05 12.81 20.1 16L22.47 15.22C21.07 11.03 17.15 8 12.5 8Z"/></svg>
                 </button>
@@ -540,7 +540,7 @@
         </div>
     </div>
     <div id="failedStudentDetailModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden opacity-0 z-50">
-        <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-3xl p-6 transform -translate-y-10">
+        <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-4xl p-6 transform -translate-y-10">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-xl font-bold">รายละเอียดผลการเรียน</h3>
                 <button id="closeFailedStudentDetailModalBtn" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
@@ -670,7 +670,8 @@
                 resolvedFailedStudents: {}, // NEW: For students who have been resolved
                 panelVisibility: { managementPanel: true, columnPanel: true, statusPanel: true },
                 sortConfig: { studentSort: 'default', assignmentSort: 'default' },
-                currentStudentIdForReport: null
+                currentStudentIdForReport: null,
+                warehouseDetailShowAll: false // NEW for warehouse detail filter
             };
         };
 
@@ -730,6 +731,13 @@
 
         const setupFirestoreListener = () => {
             onSnapshot(gradebookDocRef, (docSnap) => {
+                // --- Start of Fix: Preserve scroll position during live updates ---
+                // บันทึกตำแหน่งการสกรอลล์ปัจจุบันของตารางในคลังข้อมูลก่อนที่จะมีการ re-render
+                const warehouseContainer = document.getElementById('warehouseTableContainer');
+                const scrollableWarehouseDiv = warehouseContainer ? warehouseContainer.querySelector('div[class*="overflow-auto"]') : null;
+                const warehouseScrollTop = scrollableWarehouseDiv ? scrollableWarehouseDiv.scrollTop : 0;
+                // --- End of Fix ---
+
                 isTimeTraveling = true; 
                 if (docSnap.exists()) {
                     let loadedState = docSnap.data();
@@ -747,6 +755,7 @@
                     if (!state.failedStudentWarehouse) state.failedStudentWarehouse = {};
                     if (!state.resolvedFailedStudents) state.resolvedFailedStudents = {}; // NEW
                     if (state.currentStudentIdForReport === undefined) state.currentStudentIdForReport = null;
+                    if (state.warehouseDetailShowAll === undefined) state.warehouseDetailShowAll = false; // NEW
                     
                     let currentYearData = state.academicYears.find(y => y.year === state.currentAcademicYear);
                     if (!currentYearData) {
@@ -782,6 +791,17 @@
                 }
                 
                 render();
+
+                // --- Start of Fix: Restore scroll position after render ---
+                // หากมุมมองปัจจุบันคือคลังข้อมูล ให้คืนค่าตำแหน่งการสกรอลล์กลับไปที่เดิม
+                if (currentView === 'warehouse' && warehouseScrollTop > 0) {
+                    const newScrollableWarehouseDiv = warehouseContainer ? warehouseContainer.querySelector('div[class*="overflow-auto"]') : null;
+                    if (newScrollableWarehouseDiv) {
+                        newScrollableWarehouseDiv.scrollTop = warehouseScrollTop;
+                    }
+                }
+                // --- End of Fix ---
+
                 updateUndoRedoButtons();
                 isTimeTraveling = false;
             }, (error) => {
@@ -909,11 +929,12 @@
         const render = () => {
             if (!state || !state.mainTitle) return;
             mainTitle.textContent = state.mainTitle;
-            renderContextSelectors();
-
+            
+            const topRightButtons = document.getElementById('topRightButtons');
             const quickActionsDiv = document.getElementById('quickActionsContainer');
             const searchBarDiv = document.getElementById('searchBarContainer');
 
+            // Hide all views and headers first
             gradebookView.classList.add('hidden');
             dashboardView.classList.add('hidden');
             studentReportView.classList.add('hidden');
@@ -921,6 +942,9 @@
             classTabsContainer.classList.add('hidden');
             quickActionsDiv.classList.add('hidden');
             searchBarDiv.classList.add('hidden');
+            topRightButtons.classList.add('hidden');
+
+            renderContextSelectors(); // This will decide which header to show
 
             const semesterData = getCurrentSemesterData();
             const hasData = semesterData && semesterData.classes.length > 0;
@@ -929,14 +953,20 @@
                 warehouseView.classList.remove('hidden');
                 searchBarDiv.classList.remove('hidden');
                 searchInput.placeholder = "ค้นหาในคลัง...";
+                topRightButtons.classList.remove('hidden');
+                topRightButtons.querySelector('#settingsBtn').classList.add('hidden'); // Hide only settings
                 renderWarehouseView();
             } else if (currentView === 'studentReport' && hasData) {
                 studentReportView.classList.remove('hidden');
+                // No top buttons or search bar on individual report
                 renderStudentReport(state.currentStudentIdForReport);
             } else if (hasData) {
+                // Show all main UI elements
                 classTabsContainer.classList.remove('hidden');
                 quickActionsDiv.classList.remove('hidden');
                 searchBarDiv.classList.remove('hidden');
+                topRightButtons.classList.remove('hidden');
+                topRightButtons.querySelector('#settingsBtn').classList.remove('hidden');
                 searchInput.placeholder = "ค้นหาชื่อนักเรียน...";
                 renderClassTabs();
 
@@ -950,7 +980,9 @@
                     renderTable();
                 }
             } else {
+                // No data view
                 gradebookView.classList.remove('hidden');
+                topRightButtons.classList.remove('hidden'); // Still show settings to add data
                 gradebookView.innerHTML = `<div class="text-center p-10 bg-white rounded-lg shadow-md">
                     <h2 class="text-xl font-semibold text-gray-700">ไม่มีข้อมูลสำหรับภาคเรียนนี้</h2>
                     <p class="text-gray-500 mt-2">กรุณาเลือกปีการศึกษาและภาคเรียน หรือไปที่ 'ตั้งค่า' เพื่อเพิ่มข้อมูลใหม่</p>
@@ -967,6 +999,7 @@
                 deleteClassBtn.disabled = !semesterData || semesterData.classes.length <= 1;
             }
         };
+
         
         const renderContextSelectors = () => {
             contextHeader.innerHTML = '';
@@ -2559,16 +2592,21 @@
                             
                             if (scores.gpa === '0.0') {
                                 if (!state.resolvedFailedStudents[warehouseKey]) {
-                                    state.failedStudentWarehouse[warehouseKey] = {
-                                        studentId: student.id,
-                                        studentName: student.name,
-                                        classId: cls.id,
-                                        className: cls.name,
-                                        semesterId: semester.id,
-                                        semesterName: semester.name,
-                                        year: year.year,
-                                        totalScore: scores.totalScore
-                                    };
+                                    if (!state.failedStudentWarehouse[warehouseKey]) {
+                                        state.failedStudentWarehouse[warehouseKey] = {
+                                            studentId: student.id,
+                                            studentName: student.name,
+                                            classId: cls.id,
+                                            className: cls.name,
+                                            semesterId: semester.id,
+                                            semesterName: semester.name,
+                                            year: year.year,
+                                            totalScore: scores.totalScore,
+                                            remedialGrades: {} 
+                                        };
+                                    } else {
+                                        state.failedStudentWarehouse[warehouseKey].totalScore = scores.totalScore;
+                                    }
                                 }
                             } else {
                                 if (state.failedStudentWarehouse[warehouseKey]) {
@@ -2666,7 +2704,34 @@
             });
         };
         
-        const renderFailedStudentDetailModal = (key) => {
+        const handleRemedialGrade = async (key, assignmentId) => {
+            const contentDiv = document.getElementById('failedStudentDetailContent');
+            const scrollPosition = contentDiv ? contentDiv.scrollTop : 0;
+
+            let entry = state.failedStudentWarehouse[key] || state.resolvedFailedStudents[key];
+            if (entry) {
+                if (!entry.remedialGrades) {
+                    entry.remedialGrades = {};
+                }
+                entry.remedialGrades[assignmentId] = 'D';
+                await saveStateToFirebase(); 
+                renderFailedStudentDetailModal(key, scrollPosition);
+            }
+        };
+
+        const handleRevertRemedialGrade = async (key, assignmentId) => {
+            const contentDiv = document.getElementById('failedStudentDetailContent');
+            const scrollPosition = contentDiv ? contentDiv.scrollTop : 0;
+
+            let entry = state.failedStudentWarehouse[key] || state.resolvedFailedStudents[key];
+            if (entry && entry.remedialGrades) {
+                delete entry.remedialGrades[assignmentId];
+                await saveStateToFirebase();
+                renderFailedStudentDetailModal(key, scrollPosition);
+            }
+        };
+
+        const renderFailedStudentDetailModal = (key, scrollPosition = 0) => {
             const entry = state.failedStudentWarehouse[key] || state.resolvedFailedStudents[key];
             if (!entry) return;
 
@@ -2680,13 +2745,34 @@
                 return;
             }
 
-            const scores = calculateScores(student.id, classData);
+            const showAll = state.warehouseDetailShowAll || false;
+
+            const tempClassData = JSON.parse(JSON.stringify(classData));
+            if (entry.remedialGrades) {
+                for (const assignmentId in entry.remedialGrades) {
+                    const gradeKey = `${student.id}-${assignmentId}`;
+                    tempClassData.grades[gradeKey] = entry.remedialGrades[assignmentId];
+                }
+            }
+
+            const scores = calculateScores(student.id, tempClassData);
+
+            const assignmentsToShow = classData.assignments.filter(assignment => {
+                if (showAll) {
+                    return true;
+                }
+                const gradeKey = `${student.id}-${assignment.id}`;
+                const originalGrade = classData.grades[gradeKey] || 'none';
+                const hasRemedialGrade = entry.remedialGrades && entry.remedialGrades[assignment.id];
+                return originalGrade === 'none' || hasRemedialGrade;
+            });
 
             let tableRows = '';
-            classData.assignments.forEach((assignment, index) => {
+            assignmentsToShow.forEach((assignment, index) => {
                 const gradeKey = `${student.id}-${assignment.id}`;
-                const grade = classData.grades[gradeKey] || 'none';
-                const progressScore = classData.progressScores ? classData.progressScores[gradeKey] : undefined;
+                const grade = tempClassData.grades[gradeKey] || 'none';
+                const progressScore = tempClassData.progressScores ? tempClassData.progressScores[gradeKey] : undefined;
+                
                 let statusText, statusClass;
 
                 if (progressScore !== undefined && progressScore !== null && progressScore !== '') {
@@ -2696,7 +2782,35 @@
                     statusText = grade === 'none' ? 'ยังไม่ส่ง' : grade;
                     statusClass = `status-${grade}`;
                 }
-                tableRows += `<tr class="border-b ${grade === 'none' ? 'bg-red-50' : ''}"><td class="p-2">${index + 1}. ${assignment.name}</td><td class="p-2 text-center"><span class="px-2 py-1 text-xs font-semibold rounded-full ${statusClass}">${statusText}</span></td></tr>`;
+
+                let remedialButtonHtml = '<td></td>';
+                const hasRemedialGrade = entry.remedialGrades && entry.remedialGrades[assignment.id];
+                const originalGrade = classData.grades[gradeKey] || 'none';
+
+                if (hasRemedialGrade) {
+                     remedialButtonHtml = `<td class="p-2 text-center">
+                        <button class="revert-remedial-btn bg-gray-400 hover:bg-gray-500 text-white text-xs font-bold py-1 px-2 rounded" data-key="${key}" data-assignment-id="${assignment.id}">
+                           ยกเลิก
+                        </button>
+                    </td>`;
+                } else if (originalGrade === 'none') {
+                    remedialButtonHtml = `<td class="p-2 text-center">
+                        <button class="remedial-grade-btn bg-yellow-400 hover:bg-yellow-500 text-yellow-800 text-xs font-bold py-1 px-2 rounded" data-key="${key}" data-assignment-id="${assignment.id}">
+                            แก้ 0 (D)
+                        </button>
+                    </td>`;
+                }
+
+                tableRows += `<tr class="border-b ${grade === 'none' && !hasRemedialGrade ? 'bg-red-50' : ''}">
+                    <td class="p-2">${index + 1}</td>
+                    <td class="p-2 text-center">${assignment.chapter || '-'}</td>
+                    <td class="p-2">${assignment.name}</td>
+                    <td class="p-2 text-center">${assignment.weight || 1}</td>
+                    <td class="p-2 text-center">${assignment.quantity || '-'}</td>
+                    <td class="p-2 text-center">${assignment.page || '-'}</td>
+                    <td class="p-2 text-center"><span class="px-2 py-1 text-xs font-semibold rounded-full ${statusClass}">${statusText}</span></td>
+                    ${remedialButtonHtml}
+                </tr>`;
             });
 
             const contentDiv = document.getElementById('failedStudentDetailContent');
@@ -2712,18 +2826,65 @@
                         <div class="bg-red-100 p-3 rounded-lg"><p class="text-sm text-red-700">คะแนนเก็บ</p><p class="text-2xl font-bold text-red-800">${scores.assignmentScore}</p></div>
                     </div>
                     <div>
-                        <h4 class="font-semibold mb-2">รายการส่งงาน</h4>
+                        <div class="flex justify-between items-center mb-2">
+                            <h4 class="font-semibold">รายการส่งงาน</h4>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="warehouseDetailFilter" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${showAll ? 'checked' : ''}>
+                                <label for="warehouseDetailFilter" class="ml-2 block text-sm text-gray-900">แสดงงานทั้งหมด</label>
+                            </div>
+                        </div>
                         <div class="max-h-60 overflow-y-auto border rounded-lg">
                             <table class="w-full text-sm">
-                                <thead class="sticky top-0 bg-gray-100"><tr><th class="p-2 text-left">ชื่องาน</th><th class="p-2 text-center">สถานะ</th></tr></thead>
+                                <thead class="sticky top-0 bg-gray-100">
+                                    <tr>
+                                        <th class="p-2 text-left">ที่</th>
+                                        <th class="p-2 text-center">บทที่</th>
+                                        <th class="p-2 text-left w-2/5">ชื่องาน</th>
+                                        <th class="p-2 text-center">น้ำหนัก</th>
+                                        <th class="p-2 text-center">จำนวน</th>
+                                        <th class="p-2 text-center">หน้า</th>
+                                        <th class="p-2 text-center">สถานะ</th>
+                                        <th class="p-2 text-center">แก้ 0</th>
+                                    </tr>
+                                </thead>
                                 <tbody>${tableRows}</tbody>
                             </table>
                         </div>
                     </div>
                 </div>
             `;
-            openModal(document.getElementById('failedStudentDetailModal'));
+            
+            document.getElementById('warehouseDetailFilter').addEventListener('change', async (e) => {
+                const currentScroll = contentDiv.scrollTop;
+                state.warehouseDetailShowAll = e.target.checked;
+                await saveStateToFirebase();
+                renderFailedStudentDetailModal(key, currentScroll);
+            });
+
+            contentDiv.querySelectorAll('.remedial-grade-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const key = e.currentTarget.dataset.key;
+                    const assignmentId = e.currentTarget.dataset.assignmentId;
+                    handleRemedialGrade(key, assignmentId);
+                });
+            });
+
+            contentDiv.querySelectorAll('.revert-remedial-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const key = e.currentTarget.dataset.key;
+                    const assignmentId = e.currentTarget.dataset.assignmentId;
+                    handleRevertRemedialGrade(key, assignmentId);
+                });
+            });
+
+            contentDiv.scrollTop = scrollPosition;
+
+            const modal = document.getElementById('failedStudentDetailModal');
+            if (modal.classList.contains('hidden')) {
+                openModal(modal);
+            }
         };
+
 
         // --- HANDLERS FOR NEW BUTTONS ---
         const handleEditYear = () => {
