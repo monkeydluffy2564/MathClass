@@ -3425,21 +3425,27 @@ if (atRiskSlider && atRiskLabel) {
 		
 		        // 1. ปุ่ม "ใช้ตัวกรอง"
         applyFiltersBtn.addEventListener('click', () => {
-            commitChange(() => {
-                const filters = state.dashboardFilters;
-                // อ่านค่าจากฟอร์มทั้งหมดมาเก็บใน state
-                filters.atRiskPercent = parseInt(document.getElementById('filterAtRisk').value, 10);
-                const lateValue = document.getElementById('filterLate').value;
-filters.lateSubmissions = lateValue === '' ? -1 : parseInt(lateValue, 10);
-                filters.missingAssignmentId = document.getElementById('filterMissingAssignment').value;
-                filters.gpaMin = document.getElementById('filterGpaMin').value;
-                filters.gpaMax = document.getElementById('filterGpaMax').value;
-                filters.scoreMin = document.getElementById('filterScoreMin').value;
-                filters.scoreMax = document.getElementById('filterScoreMax').value;
-                filters.isActive = true; // ตั้งค่าว่ากำลังใช้งานตัวกรอง
-            });
-            showToast('ใช้ตัวกรองเรียบร้อย');
-        });
+    // 1. สร้างฟังก์ชันเพื่ออัปเดตค่าตัวกรองใน state โดยตรง
+    const setFilters = () => {
+        const filters = state.dashboardFilters;
+        filters.atRiskPercent = parseInt(document.getElementById('filterAtRisk').value, 10);
+        const lateValue = document.getElementById('filterLate').value;
+        filters.lateSubmissions = lateValue === '' ? -1 : parseInt(lateValue, 10);
+        filters.missingAssignmentId = document.getElementById('filterMissingAssignment').value;
+        filters.gpaMin = document.getElementById('filterGpaMin').value;
+        filters.gpaMax = document.getElementById('filterGpaMax').value;
+        filters.scoreMin = document.getElementById('filterScoreMin').value;
+        filters.scoreMax = document.getElementById('filterScoreMax').value;
+        filters.isActive = true;
+    };
+
+    // 2. เรียกใช้ฟังก์ชันที่จำเป็นเท่านั้น (ไม่ผ่าน commitChange)
+    setFilters();          // อัปเดตค่าใน state
+    saveStateToFirebase(); // บันทึกลง Firebase (เพื่อให้จำค่าได้)
+    render();              // วาดหน้าจอใหม่เพื่อแสดงผล
+
+    showToast('ใช้ตัวกรองเรียบร้อย');
+});
 
         // 2. ปุ่ม "ล้างตัวกรอง"
         resetFiltersBtn.addEventListener('click', () => {
