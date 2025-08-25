@@ -963,6 +963,27 @@
                 gpa: gpa.toFixed(1)
             };
         };
+		
+		// ฟังก์ชันใหม่ที่จะเพิ่มเข้าไป
+const commitViewChange = (mutator) => {
+    if (isTimeTraveling) {
+        mutator();
+        render();
+        return;
+    }
+    if (historyIndex < historyStack.length - 1) {
+        historyStack = historyStack.slice(0, historyIndex + 1);
+    }
+    historyStack.push(JSON.parse(JSON.stringify(state)));
+    historyIndex = historyStack.length - 1;
+
+    mutator(); //ทำการเปลี่ยนแปลง state
+
+    // บันทึกไป Firebase แต่ไม่เรียก triggerAutoSync
+    saveStateToFirebase(); 
+    render();
+    updateUndoRedoButtons();
+};
 
         // --- MAIN RENDERING LOGIC ---
         const render = () => {
@@ -2029,7 +2050,9 @@
             }
         };
 
-        const handleSwitchClass = (classId) => commitChange(() => { getCurrentSemesterData().currentClassId = classId; });
+        const handleSwitchClass = (classId) => commitViewChange(() => { // <--- เปลี่ยนมาเรียกใช้ฟังก์ชันใหม่
+    getCurrentSemesterData().currentClassId = classId; 
+});
         const handleAddClass = () => openInputModal({
             title: 'เพิ่มห้องเรียนใหม่', description: 'กรุณากรอกชื่อห้องเรียน (เช่น ม.1/2)', placeholder: 'ชื่อห้องเรียน',
             onConfirm: (name) => {
@@ -3510,4 +3533,3 @@ const updateWarehouseDetailScores = (key) => {
 
 </body>
 </html>
-
