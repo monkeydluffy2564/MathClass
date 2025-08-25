@@ -2889,31 +2889,40 @@ if (filters.gpaMax !== '' && parseFloat(scores.gpa) > parseFloat(filters.gpaMax)
         };
 
         const handleExportDashboard = () => {
-            const dashboardContent = document.getElementById('dashboardContent');
-            const exportButton = document.getElementById('exportDashboardBtn');
-            const filterPanel = document.getElementById('filterPanel');
-            if (dashboardContent && exportButton) {
-                showToast('กำลังสร้างรูปภาพ...');
-                exportButton.style.visibility = 'hidden';
-                filterPanel.style.display = 'none'; // Hide filters for export
+    const dashboardContent = document.getElementById('dashboardContent');
+    const exportButton = document.getElementById('exportDashboardBtn');
+    const filterPanel = document.getElementById('filterPanel');
+    const filterToggleButton = document.getElementById('toggleFilterPanelBtn');
 
-                html2canvas(dashboardContent, {
-                    scale: 2,
-                    useCORS: true,
-                    backgroundColor: '#ffffff'
-                }).then(canvas => {
-                    const link = document.createElement('a');
-                    link.download = 'dashboard-summary.jpg';
-                    link.href = canvas.toDataURL('image/jpeg', 0.95);
-                    link.click();
-                }).catch(err => {
-                    console.error('Error exporting dashboard:', err);
-                    showToast('เกิดข้อผิดพลาดในการสร้างรูปภาพ', true);
-                }).finally(() => {
-                    exportButton.style.visibility = 'visible';
-                });
-            }
-        };
+    if (dashboardContent && exportButton && filterToggleButton) { // ตรวจสอบให้ครบทุกปุ่ม
+        showToast('กำลังสร้างรูปภาพ...');
+        
+        // --- ส่วนที่แก้ไข ---
+        // ซ่อนปุ่มทั้งหมดด้วย display = 'none'
+        exportButton.style.display = 'none';
+        filterToggleButton.style.display = 'none';
+        filterPanel.style.display = 'none'; 
+
+        html2canvas(dashboardContent, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: '#ffffff'
+        }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = 'dashboard-summary.jpg';
+            link.href = canvas.toDataURL('image/jpeg', 0.95);
+            link.click();
+        }).catch(err => {
+            console.error('Error exporting dashboard:', err);
+            showToast('เกิดข้อผิดพลาดในการสร้างรูปภาพ', true);
+        }).finally(() => {
+            // --- ส่วนที่แก้ไข ---
+            // นำปุ่มทั้งหมดกลับมาแสดงด้วย display ที่ถูกต้อง
+            exportButton.style.display = 'flex';
+            filterToggleButton.style.display = 'flex';
+        });
+    }
+};
         
         // --- NEW WAREHOUSE FUNCTIONS ---
         const updateFailedStudentWarehouse = () => {
