@@ -1457,8 +1457,12 @@
                 const hasProgressScore = classData.progressScores && classData.progressScores[gradeKey] !== undefined && classData.progressScores[gradeKey] !== null && classData.progressScores[gradeKey] !== '';
                 return !hasGrade && !hasProgressScore;
             });
+			
+			const overdueStatus = isOverdue(assignment);
+            const overdueBadge = overdueStatus ? '<span class="ml-2 bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded-full">พ้นกำหนดส่ง</span>' : '';
 
-            modalTitle.innerHTML = `ให้คะแนนงาน: <span class="font-normal text-gray-600">${assignment.name}</span> <span class="text-sm font-normal text-red-500 ml-2">(${trueUnsubmittedCount} คนที่ยังไม่ส่ง)</span>`;
+
+            modalTitle.innerHTML = `ให้คะแนนงาน: <span class="font-normal text-gray-600">${assignment.name}</span> ${overdueBadge} <span class="text-sm font-normal text-red-500 ml-2">(${trueUnsubmittedCount} คนที่ยังไม่ส่ง)</span>`;
             modalTitle.dataset.assignmentId = assignmentId;
 
             studentsToGrade.forEach(student => {
@@ -2562,7 +2566,7 @@
             });
         };
 
-        const triggerAutoSync = debounce(autoSyncToSheet, 5000); // 5-second delay
+        const triggerAutoSync = debounce(autoSyncToSheet, 60000); // 60-second delay
 
         // --- EXPORT/IMPORT HANDLERS ---
         const handleExport = () => {
