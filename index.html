@@ -211,29 +211,48 @@
             scrollbar-width: none;  /* Firefox */
         }
 		
-		/* Fullscreen Mode Styles */
-        body.fullscreen-mode #classTabsContainer,
+		/* --- START: Fullscreen Mode Styles (Complete Replacement) --- */
+
+/* ซ่อน UI ที่ไม่ต้องการทั้งหมด */
+body.fullscreen-mode header > div:not(#topRightButtons),
+body.fullscreen-mode #classTabsContainer,
 body.fullscreen-mode #quickActionsContainer,
-body.fullscreen-mode #searchBarContainer,
-body.fullscreen-mode header > div:not(#topRightButtons), /* ซ่อนเฉพาะส่วนหัวข้อ ไม่ใช่ header ทั้งหมด */
-body.fullscreen-mode #topRightButtons > button:not(#fullscreenBtn) { /* ซ่อนปุ่มอื่น ยกเว้นปุ่ม fullscreen */
+body.fullscreen-mode #searchBarContainer {
     display: none;
 }
-        body.fullscreen-mode .w-full.p-4 {
-            padding: 0;
-        }
-        body.fullscreen-mode .table-container {
-            height: 100vh;
-            max-height: 100vh;
-            border-radius: 0;
-            box-shadow: none;
-        }
-        body.fullscreen-mode .icon-enter-fullscreen {
-            display: none;
-        }
-        body.fullscreen-mode .icon-exit-fullscreen {
-            display: block;
-        }
+
+/* ย้ายตำแหน่งกล่องปุ่มไปไว้มุมขวาบนสุดของจอ และให้ลอยทับทุกอย่าง */
+body.fullscreen-mode #topRightButtons {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    z-index: 999;
+}
+
+/* ในกล่องปุ่มนั้น ให้ซ่อนปุ่มอื่นทั้งหมด ยกเว้นปุ่ม Fullscreen */
+body.fullscreen-mode #topRightButtons > button:not(#fullscreenBtn) {
+    display: none;
+}
+
+/* ขยายพื้นที่ตารางให้เต็มจอ */
+body.fullscreen-mode .w-full.p-4 {
+    padding: 0;
+}
+body.fullscreen-mode .table-container {
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* สลับไอคอนปุ่ม */
+body.fullscreen-mode .icon-enter-fullscreen {
+    display: none;
+}
+body.fullscreen-mode .icon-exit-fullscreen {
+    display: block;
+}
+/* --- END: Fullscreen Mode Styles (Complete Replacement) --- */
 		
     </style>
 </head>
@@ -710,6 +729,7 @@ body.fullscreen-mode #topRightButtons > button:not(#fullscreenBtn) { /* ซ่�
         const exportDashboardBtn = document.getElementById('exportDashboardBtn');
         const searchInput = document.getElementById('searchInput');
 		const fullscreenBtn = document.getElementById('fullscreenBtn');
+		const mainContent = document.getElementById('mainContent');
 		
         // NEW: Filter DOM Elements
         const toggleFilterPanelBtn = document.getElementById('toggleFilterPanelBtn');
@@ -3554,9 +3574,28 @@ if (atRiskSlider && atRiskLabel) {
         
         settingsBtn.addEventListener('click', () => openModal(settingsModal));
 		
-		fullscreenBtn.addEventListener('click', () => {
-    document.body.classList.toggle('fullscreen-mode');
-    // เมื่อมีการเปลี่ยนโหมด อาจจะต้อง render ตารางใหม่เพื่อให้ขนาดถูกต้อง
+		// --- โค้ดสำหรับ Fullscreen แบบใหม่ ---
+fullscreenBtn.addEventListener('click', () => {
+    if (!document.fullscreenElement) {
+        // ขอเข้าสู่โหมดเต็มจอ
+        mainContent.requestFullscreen().catch(err => {
+            console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+        });
+    } else {
+        // ขอออกจากโหมดเต็มจอ
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
+});
+
+// เพิ่ม Event Listener เพื่อจัดการการแสดงผลเมื่อโหมดเต็มจอมีการเปลี่ยนแปลง
+document.addEventListener('fullscreenchange', () => {
+    // ตรวจสอบว่าตอนนี้อยู่ในโหมดเต็มจอหรือไม่
+    const isFullscreen = !!document.fullscreenElement;
+    // เพิ่ม/ลบ class 'fullscreen-mode' บน body ตามสถานะ
+    document.body.classList.toggle('fullscreen-mode', isFullscreen);
+    // สั่ง render ใหม่เพื่อให้ตารางปรับขนาดได้ถูกต้อง
     render(); 
 });
 
@@ -3691,4 +3730,5 @@ if (atRiskSlider && atRiskLabel) {
 
 </body>
 </html>
+
 
