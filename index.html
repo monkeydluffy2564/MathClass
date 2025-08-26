@@ -305,6 +305,7 @@ body.fullscreen-mode .icon-exit-fullscreen {
             <div id="quickActionsContainer" class="flex gap-2 w-full sm:w-auto">
 			<button id="dashboardAllBtn" class="flex-1 sm:flex-none bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg shadow">ภาพรวมทั้งหมด</button>
                  <button id="dashboardBtn" class="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow">ภาพรวม</button>
+				 <button id="bubbleViewBtn" class="flex-1 sm:flex-none bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded-lg shadow">Bubble View</button>
                  <button id="addAssignmentBtn" class="flex-1 sm:flex-none bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow">เพิ่มงาน</button>
                  <button id="viewSummaryBtn" class="flex-1 sm:flex-none bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow">ดูสรุปงาน</button>
             </div>
@@ -416,6 +417,21 @@ body.fullscreen-mode .icon-exit-fullscreen {
                         </div>
                     </div>
                 </div>
+				
+				<div id="bubbleDashboardContent" class="hidden bg-white p-6 rounded-lg shadow-md">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+        <h2 id="bubbleDashboardTitle" class="text-2xl font-bold text-gray-800">ภาพรวมนักเรียน (Bubble View)</h2>
+        
+        <div id="bubbleScopeToggle" class="flex rounded-lg bg-gray-200 p-1 mt-2 sm:mt-0">
+            <button id="bubbleScopeSingleBtn" class="px-3 py-1 text-sm font-semibold rounded-md">เฉพาะห้องนี้</button>
+            <button id="bubbleScopeAllBtn" class="px-3 py-1 text-sm font-semibold rounded-md">รวมทุกห้อง</button>
+        </div>
+        </div>
+    <div style="height: 65vh;">
+        <canvas id="studentBubbleChart"></canvas>
+    </div>
+</div>
+				
             </div>
             <div id="studentReportView" class="hidden">
                 <!-- This div will be populated by renderStudentReport -->
@@ -732,6 +748,11 @@ body.fullscreen-mode .icon-exit-fullscreen {
 		const fullscreenBtn = document.getElementById('fullscreenBtn');
 		const mainContent = document.getElementById('mainContent');
 		
+		const bubbleViewBtn = document.getElementById('bubbleViewBtn');
+let studentBubbleChartInstance = null;
+const bubbleScopeSingleBtn = document.getElementById('bubbleScopeSingleBtn'); // <-- เพิ่ม
+const bubbleScopeAllBtn = document.getElementById('bubbleScopeAllBtn');   // <-- เพิ่ม
+		
         // NEW: Filter DOM Elements
         const toggleFilterPanelBtn = document.getElementById('toggleFilterPanelBtn');
         const filterPanel = document.getElementById('filterPanel');
@@ -741,6 +762,8 @@ body.fullscreen-mode .icon-exit-fullscreen {
         // --- APP STATE ---
         let state = {};
 		let dashboardMode = 'single';
+		let currentDashboardSubView = 'summary'; // 'summary' or 'bubbles'
+		let bubbleViewScope = 'single'; // 'single' or 'all'  <-- เพิ่มบรรทัดนี้ครับ
         let onInputConfirm = null;
         let onAssignmentConfirm = null;
         let currentInputType = 'input';
@@ -813,6 +836,125 @@ body.fullscreen-mode .icon-exit-fullscreen {
                 dashboardFilters: getDefaultDashboardFilters() // NEW: Add filters to state
             };
         };
+		
+		// === เพิ่มฟังก์ชันใหม่นี้ทั้งหมด ===
+// === แทนที่ฟังก์ชัน renderStudentBubbleChart เดิมด้วยโค้ดชุดใหม่นี้ทั้งหมด ===
+const renderStudentBubbleChart = () => {
+    const semesterData = getCurrentSemesterData();
+    if (!semesterData) return;
+
+    // --- ส่วนควบคุม UI ---
+    const bubbleTitleEl = document.getElementById('bubbleDashboardTitle');
+    bubbleScopeSingleBtn.classList.toggle('toggle-btn-active', bubbleViewScope === 'single');
+    bubbleScopeSingleBtn.classList.toggle('toggle-btn-inactive', bubbleViewScope !== 'single');
+    bubbleScopeAllBtn.classList.toggle('toggle-btn-active', bubbleViewScope === 'all');
+    bubbleScopeAllBtn.classList.toggle('toggle-btn-inactive', bubbleViewScope !== 'all');
+
+    // --- ส่วนรวบรวมข้อมูล ---
+    let studentsToChart = [];
+    let chartTitle = '';
+
+    if (bubbleViewScope === 'all') {
+        chartTitle = 'ภาพรวมนักเรียน (รวมทุกห้อง)';
+        semesterData.classes.forEach(cls => {
+            const classData = semesterData.classData[cls.id];
+            if (classData && classData.students) {
+                classData.students.forEach(student => {
+                    studentsToChart.push({ ...student, className: cls.name, originalClassData: classData });
+                });
+            }
+        });
+    } else { // 'single'
+        chartTitle = 'ภาพรวมนักเรียน (ห้องเรียนปัจจุบัน)';
+        const classData = getCurrentClassData();
+        if (classData && classData.students) {
+            const currentClass = semesterData.classes.find(c => c.id === semesterData.currentClassId);
+            classData.students.forEach(student => {
+                studentsToChart.push({ ...student, className: currentClass.name, originalClassData: classData });
+            });
+        }
+    }
+    
+    bubbleTitleEl.textContent = chartTitle;
+
+    const bubbleCtx = document.getElementById('studentBubbleChart').getContext('2d');
+    if (studentBubbleChartInstance) {
+        studentBubbleChartInstance.destroy();
+    }
+    
+    if (studentsToChart.length === 0) {
+        // ถ้าไม่มีนักเรียน ให้เคลียร์ canvas
+        bubbleCtx.clearRect(0, 0, bubbleCtx.canvas.width, bubbleCtx.canvas.height);
+        return;
+    };
+
+    // --- ส่วนเตรียมข้อมูลสำหรับวาดกราฟ ---
+    const allScores = studentsToChart.map(s => calculateScores(s.id, s.originalClassData).totalScore);
+    const classAverageScore = allScores.reduce((a, b) => a + b, 0) / allScores.length;
+
+    const bubbleData = studentsToChart.map(studentInfo => {
+        const scores = calculateScores(studentInfo.id, studentInfo.originalClassData);
+        const stats = getStudentSubmissionStats(studentInfo.id, studentInfo.originalClassData);
+        const backgroundColor = scores.totalScore >= classAverageScore ? 'rgba(16, 185, 129, 0.7)' : 'rgba(239, 68, 68, 0.7)';
+        
+        return {
+            label: studentInfo.name,
+            className: studentInfo.className,
+            data: [{
+                x: stats.missingCount,
+                y: parseFloat(scores.gpa),
+                r: Math.max(scores.totalScore / 4, 5)
+            }],
+            backgroundColor: backgroundColor
+        };
+    });
+    
+    // --- ส่วนวาดกราฟ ---
+    studentBubbleChartInstance = new Chart(bubbleCtx, {
+        type: 'bubble',
+        data: { datasets: bubbleData },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(tooltipItem) {
+                            const dataset = tooltipItem.dataset;
+                            const dataPoint = dataset.data[tooltipItem.dataIndex];
+                            const studentName = dataset.label;
+                            const className = dataset.className;
+                            const gpa = dataPoint.y;
+                            const missing = dataPoint.x;
+                            const totalScore = (dataPoint.r * 4).toFixed(2);
+
+                            let finalLabel = studentName;
+                            if (bubbleViewScope === 'all') {
+                                finalLabel += ` (${className})`;
+                            }
+                            return `${finalLabel}: คะแนนรวม ${totalScore}, GPA ${gpa}, ค้าง ${missing} งาน`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    title: { display: true, text: 'เกรดเฉลี่ย (GPA)' },
+                    beginAtZero: true,
+                    max: 4.0
+                },
+                x: {
+                    title: { display: true, text: 'จำนวนงานที่ค้าง (ชิ้น)' },
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+};
+// ===================================
 
 const clearDashboardContent = () => {
     // ทำลายกราฟเก่าทิ้ง เพื่อป้องกันการวาดทับกัน
@@ -1318,12 +1460,23 @@ if (allTopPerformers.length > 0) {
                 // ...
 if (currentView === 'dashboard') {
     dashboardView.classList.remove('hidden');
-    dashboardBtn.textContent = 'ตารางคะแนน'; // <<< เพิ่มบรรทัดนี้
+    dashboardBtn.textContent = 'ตารางคะแนน';
 
-    if (dashboardMode === 'overall') {
-        renderAllClassesDashboard();
-    } else {
-        renderDashboard();
+    const dashboardContent = document.getElementById('dashboardContent');
+    const bubbleDashboardContent = document.getElementById('bubbleDashboardContent');
+
+    if (currentDashboardSubView === 'bubbles') { // <-- ถ้า state เป็น bubbles
+        dashboardContent.classList.add('hidden');
+        bubbleDashboardContent.classList.remove('hidden');
+        renderStudentBubbleChart(); // <-- เรียกฟังก์ชันวาด Bubble Chart
+    } else { // <-- ถ้าเป็น summary หรือ อื่นๆ
+        dashboardContent.classList.remove('hidden');
+        bubbleDashboardContent.classList.add('hidden');
+        if (dashboardMode === 'overall') {
+            renderAllClassesDashboard();
+        } else {
+            renderDashboard();
+        }
     }
 } else { 
     gradebookView.classList.remove('hidden');
@@ -3730,6 +3883,32 @@ dashboardAllBtn.addEventListener('click', () => {
     currentView = 'dashboard';
     dashboardMode = 'overall'; // << กำหนดสถานะเป็น 'overall'
     render(); // << เรียก render() หลัก
+});
+
+bubbleViewBtn.addEventListener('click', () => { 
+    if (currentView !== 'dashboard' || currentDashboardSubView !== 'bubbles') {
+        currentView = 'dashboard';
+        currentDashboardSubView = 'bubbles';
+    } else {
+        // ถ้ากดซ้ำ ให้กลับไปหน้า dashboard ปกติ
+        currentDashboardSubView = 'summary';
+    }
+    render();
+});
+
+// === เพิ่ม Event Listeners สองอันนี้เข้าไป ===
+bubbleScopeSingleBtn.addEventListener('click', () => {
+    if (bubbleViewScope !== 'single') {
+        bubbleViewScope = 'single';
+        render(); // สั่งให้วาดหน้าจอใหม่
+    }
+});
+
+bubbleScopeAllBtn.addEventListener('click', () => {
+    if (bubbleViewScope !== 'all') {
+        bubbleViewScope = 'all';
+        render(); // สั่งให้วาดหน้าจอใหม่
+    }
 });
         
         document.getElementById('viewStudentReportBtn').addEventListener('click', () => {
