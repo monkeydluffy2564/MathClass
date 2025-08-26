@@ -212,12 +212,13 @@
         }
 		
 		/* Fullscreen Mode Styles */
-        body.fullscreen-mode header,
         body.fullscreen-mode #classTabsContainer,
-        body.fullscreen-mode #quickActionsContainer,
-        body.fullscreen-mode #searchBarContainer {
-            display: none;
-        }
+body.fullscreen-mode #quickActionsContainer,
+body.fullscreen-mode #searchBarContainer,
+body.fullscreen-mode header > div:not(#topRightButtons), /* ซ่อนเฉพาะส่วนหัวข้อ ไม่ใช่ header ทั้งหมด */
+body.fullscreen-mode #topRightButtons > button:not(#fullscreenBtn) { /* ซ่อนปุ่มอื่น ยกเว้นปุ่ม fullscreen */
+    display: none;
+}
         body.fullscreen-mode .w-full.p-4 {
             padding: 0;
         }
@@ -3690,3 +3691,4 @@ if (atRiskSlider && atRiskLabel) {
 
 </body>
 </html>
+
