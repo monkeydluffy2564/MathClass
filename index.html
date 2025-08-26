@@ -303,6 +303,7 @@ body.fullscreen-mode .icon-exit-fullscreen {
                 <!-- Class tabs will be rendered here -->
             </div>
             <div id="quickActionsContainer" class="flex gap-2 w-full sm:w-auto">
+			<button id="dashboardAllBtn" class="flex-1 sm:flex-none bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg shadow">ภาพรวมทั้งหมด</button>
                  <button id="dashboardBtn" class="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow">ภาพรวม</button>
                  <button id="addAssignmentBtn" class="flex-1 sm:flex-none bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow">เพิ่มงาน</button>
                  <button id="viewSummaryBtn" class="flex-1 sm:flex-none bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow">ดูสรุปงาน</button>
@@ -357,7 +358,7 @@ body.fullscreen-mode .icon-exit-fullscreen {
                             <!-- Filter: Late Submissions -->
                             <div>
                                 <label for="filterLate" class="font-semibold block mb-1">ส่งงานช้ามากกว่า (ชิ้น)</label>
-                                <input type="number" id="filterLate" min="0" value="0" class="w-full p-1 border rounded">
+                                <input type="number" id="filterLate" min="0" value="" class="w-full p-1 border rounded">
                             </div>
                             <!-- Filter: Missing Specific Assignment -->
                             <div>
@@ -739,6 +740,7 @@ body.fullscreen-mode .icon-exit-fullscreen {
         
         // --- APP STATE ---
         let state = {};
+		let dashboardMode = 'single';
         let onInputConfirm = null;
         let onAssignmentConfirm = null;
         let currentInputType = 'input';
@@ -787,7 +789,7 @@ body.fullscreen-mode .icon-exit-fullscreen {
         const getDefaultDashboardFilters = () => ({
             atRiskPercent: 50,
             missingAssignmentId: 'all',
-            lateSubmissions: 0,
+            lateSubmissions: '',
             gpaMin: '',
             gpaMax: '',
             scoreMin: '',
@@ -811,6 +813,19 @@ body.fullscreen-mode .icon-exit-fullscreen {
                 dashboardFilters: getDefaultDashboardFilters() // NEW: Add filters to state
             };
         };
+
+const clearDashboardContent = () => {
+    // ทำลายกราฟเก่าทิ้ง เพื่อป้องกันการวาดทับกัน
+    if (submissionChartInstance) submissionChartInstance.destroy();
+    if (performanceChartInstance) performanceChartInstance.destroy();
+
+    // ล้างรายชื่อนักเรียนในลิสต์
+    const atRiskList = document.getElementById('studentsAtRiskList');
+    if (atRiskList) atRiskList.innerHTML = ''; // ทำให้ลิสต์ว่างเปล่า
+
+    const topPerformersList = document.getElementById('topPerformersList');
+    if (topPerformersList) topPerformersList.innerHTML = ''; // ทำให้ลิสต์ว่างเปล่า
+};
 
         const saveStateToFirebase = async () => {
             if (isTimeTraveling) return; 
@@ -885,6 +900,171 @@ body.fullscreen-mode .icon-exit-fullscreen {
             
             return newInitialState;
         };
+		
+		const renderAllClassesDashboard = () => {
+		clearDashboardContent(); // <<< เพิ่มบรรทัดนี้เข้าไป
+    // 1. ดึงข้อมูลทุกห้องเรียนในภาคเรียนปัจจุบัน
+    const semesterData = getCurrentSemesterData();
+    if (!semesterData || semesterData.classes.length === 0) {
+        // กรณีไม่มีข้อมูล ก็แสดงข้อความว่าไม่มีข้อมูล
+        return;
+    }
+
+    // 2. เตรียมตัวแปรสำหรับรวบรวมข้อมูล
+    let totalStudents = 0;
+    let totalSubmittedCount = 0;
+    let totalMissingCount = 0;
+    let allAtRiskStudents = [];
+	let allTopPerformers = []; // <<< เพิ่มบรรทัดนี้
+    let performanceByClass = []; // สำหรับกราฟแท่งใหม่
+
+    // 3. วนลูปทุกห้องเรียนเพื่อเก็บข้อมูล
+    semesterData.classes.forEach(cls => {
+        const classData = semesterData.classData[cls.id];
+        if (!classData || classData.students.length === 0) return;
+
+        // --- โค้ดใหม่พร้อมตัวกรอง ---
+let studentsToProcess = [...classData.students]; // คัดลอกรายชื่อนักเรียนทั้งหมดมาก่อน
+const filters = state.dashboardFilters;
+
+// ถ้าตัวกรองถูกใช้งาน ให้คัดกรองนักเรียนก่อน
+if (filters.isActive) {
+    studentsToProcess = studentsToProcess.filter(student => {
+        const scores = calculateScores(student.id, classData);
+        const studentStats = getStudentSubmissionStats(student.id, classData);
+
+        // เงื่อนไขการกรองต่างๆ (คัดลอกมาจากฟังก์ชันเดิม)
+        if (filters.gpaMin !== '' && parseFloat(scores.gpa) < parseFloat(filters.gpaMin)) return false;
+        if (filters.gpaMax !== '' && parseFloat(scores.gpa) > parseFloat(filters.gpaMax)) return false;
+        if (filters.scoreMin !== '' && scores.totalScore < filters.scoreMin) return false;
+        if (filters.scoreMax !== '' && scores.totalScore > filters.scoreMax) return false;
+        if (filters.lateSubmissions > 0 && studentStats.lateCount < filters.lateSubmissions) return false;
+
+        if (filters.missingAssignmentId !== 'all') {
+            const gradeKey = `${student.id}-${filters.missingAssignmentId}`;
+            const hasGrade = classData.grades[gradeKey] && classData.grades[gradeKey] !== 'none';
+            const hasProgress = classData.progressScores && classData.progressScores[gradeKey];
+            if (hasGrade || hasProgress) return false;
+        }
+
+        return true; // นักเรียนผ่านเงื่อนไขทั้งหมด
+    });
+}
+
+// ใช้รายชื่อนักเรียนที่ผ่านการกรองแล้วมาคำนวณต่อ
+totalStudents += studentsToProcess.length;
+
+let classSubmitted = 0;
+let classMissing = 0;
+
+// คำนวณการส่งงานของห้องนี้จากนักเรียนที่ผ่านการกรอง
+studentsToProcess.forEach(student => {
+    const stats = getStudentSubmissionStats(student.id, classData);
+    classSubmitted += stats.submittedCount;
+    classMissing += stats.missingCount;
+
+    const totalAssignments = classData.assignments.length;
+    if (totalAssignments > 0 && (stats.missingCount / totalAssignments) * 100 > filters.atRiskPercent) {
+         allAtRiskStudents.push({
+            name: `${student.name} (${cls.name})`,
+            missingCount: stats.missingCount
+        });
+    }
+    if (stats.missingCount <= 1) {
+        allTopPerformers.push({
+            name: `${student.name} (${cls.name})`,
+            missingCount: stats.missingCount
+        });
+    }
+});
+// --- สิ้นสุดโค้ดใหม่ ---
+
+        totalSubmittedCount += classSubmitted;
+        totalMissingCount += classMissing;
+
+        // เก็บข้อมูลสำหรับกราฟแท่ง (เปอร์เซ็นต์การส่งงานของห้อง)
+        const totalPossibleSubmissions = classData.students.length * classData.assignments.length;
+        const submissionRate = totalPossibleSubmissions > 0 ? (classSubmitted / totalPossibleSubmissions) * 100 : 0;
+        performanceByClass.push({ 
+            className: cls.name, 
+            rate: submissionRate 
+        });
+    });
+
+    // 4. อัปเดตหน้า Dashboard ด้วยข้อมูลที่รวบรวมมา
+
+    // --- อัปเดตหัวข้อ ---
+    const dashboardTitle = document.getElementById('dashboardTitle');
+    dashboardTitle.textContent = `สรุปผลภาพรวมทุกห้องเรียน (${semesterData.name})`;
+
+    // --- อัปเดตลิสต์นักเรียน ---
+    const atRiskList = document.getElementById('studentsAtRiskList');
+atRiskList.innerHTML = ''; // ล้างลิสต์เก่า
+
+// เรียงลำดับตามจำนวนงานที่ค้างมากที่สุดไปน้อยที่สุด
+allAtRiskStudents.sort((a, b) => b.missingCount - a.missingCount);
+
+if (allAtRiskStudents.length > 0) {
+    allAtRiskStudents.forEach(student => {
+        const li = document.createElement('li');
+        // ดึงข้อมูลจาก name และ missingCount ใน Object
+        li.textContent = `${student.name} (ค้าง ${student.missingCount} งาน)`;
+        atRiskList.appendChild(li);
+    });
+} else {
+    atRiskList.innerHTML = `<li>ไม่พบนักเรียนที่เข้าเกณฑ์</li>`;
+}
+	
+	const topPerformersList = document.getElementById('topPerformersList');
+topPerformersList.innerHTML = ''; // ล้างลิสต์เก่า
+
+// เรียงลำดับโดยให้คนที่ค้าง 0 งานอยู่ก่อน
+allTopPerformers.sort((a, b) => a.missingCount - b.missingCount);
+
+if (allTopPerformers.length > 0) {
+    allTopPerformers.forEach(student => {
+        const li = document.createElement('li');
+        li.textContent = `${student.name} (ค้าง ${student.missingCount} งาน)`;
+        topPerformersList.appendChild(li);
+    });
+} else {
+    topPerformersList.innerHTML = `<li>ไม่พบนักเรียนที่เข้าเกณฑ์</li>`;
+}
+
+    // --- อัปเดตกราฟวงกลม ---
+    if(submissionChartInstance) submissionChartInstance.destroy();
+    const subCtx = document.getElementById('submissionChart').getContext('2d');
+    submissionChartInstance = new Chart(subCtx, {
+        type: 'pie',
+        data: { 
+            labels: ['ส่งแล้ว', 'ยังไม่ส่ง'], 
+            datasets: [{ 
+                data: [totalSubmittedCount, totalMissingCount], 
+                backgroundColor: ['#10B981', '#EF4444'] 
+            }] 
+        },
+    });
+
+    // --- อัปเดตกราฟแท่ง (เปลี่ยนเป็นการเทียบรายห้อง) ---
+    if(performanceChartInstance) performanceChartInstance.destroy();
+    const perfCtx = document.getElementById('performanceChart').getContext('2d');
+    performanceChartInstance = new Chart(perfCtx, {
+        type: 'bar',
+        data: { 
+            labels: performanceByClass.map(c => c.className), // ชื่อห้องเป็นแกน X
+            datasets: [{ 
+                label: 'อัตราการส่งงานเฉลี่ย (%)', 
+                data: performanceByClass.map(c => c.rate.toFixed(2)), // % การส่งงานเป็นแกน Y
+                backgroundColor: '#8B5CF6' // สีม่วง
+            }]
+        },
+        options: { scales: { y: { beginAtZero: true, max: 100 } } }
+    });
+
+    // 5. แสดงผลหน้า Dashboard
+    gradebookView.classList.add('hidden');
+    dashboardView.classList.remove('hidden');
+};
 
         const setupFirestoreListener = () => {
             onSnapshot(gradebookDocRef, (docSnap) => {
@@ -1135,15 +1315,22 @@ body.fullscreen-mode .icon-exit-fullscreen {
                 searchInput.placeholder = "ค้นหาชื่อนักเรียน...";
                 renderClassTabs();
 
-                if (currentView === 'dashboard') {
-                    dashboardView.classList.remove('hidden');
-                    dashboardBtn.textContent = 'ตารางคะแนน';
-                    renderDashboard();
-                } else { 
-                    gradebookView.classList.remove('hidden');
-                    dashboardBtn.textContent = 'ภาพรวม';
-                    renderTable();
-                }
+                // ...
+if (currentView === 'dashboard') {
+    dashboardView.classList.remove('hidden');
+    dashboardBtn.textContent = 'ตารางคะแนน'; // <<< เพิ่มบรรทัดนี้
+
+    if (dashboardMode === 'overall') {
+        renderAllClassesDashboard();
+    } else {
+        renderDashboard();
+    }
+} else { 
+    gradebookView.classList.remove('hidden');
+    dashboardBtn.textContent = 'ภาพรวม'; // <<< เพิ่มบรรทัดนี้
+    renderTable();
+}
+//...
             } else {
                 gradebookView.classList.remove('hidden');
                 topRightButtons.classList.remove('hidden');
@@ -1821,6 +2008,7 @@ if (filters.gpaMax !== '' && parseFloat(scores.gpa) > parseFloat(filters.gpaMax)
         };
 
         const renderDashboard = () => {
+		clearDashboardContent();
             const classData = getCurrentClassData();
             const dashboardTitle = document.getElementById('dashboardTitle');
             const atRiskTitle = document.getElementById('atRiskTitle');
@@ -3511,7 +3699,7 @@ if (atRiskSlider && atRiskLabel) {
             // ล้างค่าในหน้าฟอร์มให้ผู้ใช้เห็น
             document.getElementById('filterAtRisk').value = 50;
             document.getElementById('atRiskPercentLabel').textContent = 50;
-            document.getElementById('filterLate').value = 0;
+            document.getElementById('filterLate').value = '';
             document.getElementById('filterMissingAssignment').value = 'all';
             document.getElementById('filterGpaMin').value = '';
             document.getElementById('filterGpaMax').value = '';
@@ -3520,12 +3708,29 @@ if (atRiskSlider && atRiskLabel) {
             showToast('ล้างตัวกรองแล้ว');
         });
 
+// เพิ่มตัวแปรสำหรับปุ่มใหม่
+const dashboardAllBtn = document.getElementById('dashboardAllBtn');
 
-        dashboardBtn.addEventListener('click', () => {
-            currentView = currentView === 'gradebook' ? 'dashboard' : 'gradebook';
-            state.currentStudentIdForReport = null;
-            render();
-        });
+// เพิ่ม Event Listener ให้ปุ่มใหม่
+dashboardBtn.addEventListener('click', () => {
+    // ตรวจสอบว่าตอนนี้อยู่ที่หน้าไหน
+    if (currentView === 'gradebook') {
+        // ถ้าอยู่หน้าตาราง ให้ไปหน้าภาพรวม (รายห้อง)
+        currentView = 'dashboard';
+        dashboardMode = 'single';
+    } else {
+        // ถ้าอยู่หน้าภาพรวม (ใดๆ ก็ตาม) ให้กลับไปหน้าตาราง
+        currentView = 'gradebook';
+    }
+    render(); // สั่งให้วาดหน้าจอใหม่
+});
+
+// Listener ของปุ่ม "ภาพรวมทั้งหมด"
+dashboardAllBtn.addEventListener('click', () => {
+    currentView = 'dashboard';
+    dashboardMode = 'overall'; // << กำหนดสถานะเป็น 'overall'
+    render(); // << เรียก render() หลัก
+});
         
         document.getElementById('viewStudentReportBtn').addEventListener('click', () => {
             const studentId = parseInt(document.getElementById('studentGradeModalTitle').dataset.studentId);
