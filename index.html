@@ -10,7 +10,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <!-- Chart.js for Dashboard -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- html2canvas for JPG Export -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         body {
@@ -689,6 +689,7 @@ body.fullscreen-mode .icon-exit-fullscreen {
     import { getFirestore, doc, onSnapshot, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     document.addEventListener('DOMContentLoaded', async () => {
+	Chart.register(ChartDataLabels); 
         // --- Firebase Configuration ---
         const firebaseConfig = {
             apiKey: "AIzaSyB_DjUyANiQMWnFSG7d71R_ANviYbrUMM8",
@@ -837,7 +838,27 @@ const bubbleScopeAllBtn = document.getElementById('bubbleScopeAllBtn');   // <--
             };
         };
 		
-		// === เพิ่มฟังก์ชันใหม่นี้ทั้งหมด ===
+		const handleSortByAssignment = (assignmentId) => {
+            commitChange(() => {
+                const sortConfig = state.sortConfig;
+                // รีเซ็ตการเรียงคะแนนรวมหลักก่อน
+                sortConfig.studentSort = 'default';
+
+                const currentSort = sortConfig.columnSort || {};
+
+                if (currentSort.assignmentId === assignmentId && currentSort.direction === 'desc') {
+                    // จากมากไปน้อย -> น้อยไปมาก
+                    sortConfig.columnSort = { assignmentId, direction: 'asc' };
+                } else if (currentSort.assignmentId === assignmentId && currentSort.direction === 'asc') {
+                    // จากน้อยไปมาก -> กลับเป็นค่าเริ่มต้น
+                    delete sortConfig.columnSort;
+                } else {
+                    // จากค่าเริ่มต้น -> มากไปน้อย
+                    sortConfig.columnSort = { assignmentId, direction: 'desc' };
+                }
+            });
+        };
+		
 // === แทนที่ฟังก์ชัน renderStudentBubbleChart เดิมด้วยโค้ดชุดใหม่นี้ทั้งหมด ===
 const renderStudentBubbleChart = () => {
     const semesterData = getCurrentSemesterData();
@@ -883,32 +904,63 @@ const renderStudentBubbleChart = () => {
     }
     
     if (studentsToChart.length === 0) {
-        // ถ้าไม่มีนักเรียน ให้เคลียร์ canvas
         bubbleCtx.clearRect(0, 0, bubbleCtx.canvas.width, bubbleCtx.canvas.height);
         return;
     };
 
-    // --- ส่วนเตรียมข้อมูลสำหรับวาดกราฟ ---
-    const allScores = studentsToChart.map(s => calculateScores(s.id, s.originalClassData).totalScore);
-    const classAverageScore = allScores.reduce((a, b) => a + b, 0) / allScores.length;
+    // --- START: ตรรกะใหม่ในการจัดกลุ่มนักเรียน ---
+    const studentGroups = new Map();
 
-    const bubbleData = studentsToChart.map(studentInfo => {
+    studentsToChart.forEach(studentInfo => {
         const scores = calculateScores(studentInfo.id, studentInfo.originalClassData);
         const stats = getStudentSubmissionStats(studentInfo.id, studentInfo.originalClassData);
-        const backgroundColor = scores.totalScore >= classAverageScore ? 'rgba(16, 185, 129, 0.7)' : 'rgba(239, 68, 68, 0.7)';
-        
-        return {
-            label: studentInfo.name,
+        const x = stats.missingCount;
+        const y = parseFloat(scores.gpa);
+        const key = `${x}-${y}`; // สร้าง Key จากพิกัด X และ Y
+
+        if (!studentGroups.has(key)) {
+            studentGroups.set(key, {
+                x: x,
+                y: y,
+                students: [], // Array สำหรับเก็บข้อมูลนักเรียนในกลุ่ม
+                totalScoreSum: 0,
+            });
+        }
+
+        const group = studentGroups.get(key);
+        group.students.push({
+            name: studentInfo.name,
             className: studentInfo.className,
+            totalScore: scores.totalScore,
+            missingCount: stats.missingCount
+        });
+        group.totalScoreSum += scores.totalScore;
+    });
+    // --- END: ตรรกะใหม่ในการจัดกลุ่มนักเรียน ---
+
+    // --- ส่วนเตรียมข้อมูลสำหรับวาดกราฟจากกลุ่มที่สร้างขึ้น ---
+    const bubbleData = [];
+    const allScores = studentsToChart.map(s => calculateScores(s.id, s.originalClassData).totalScore);
+    const classAverageScore = allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0;
+    
+    studentGroups.forEach(group => {
+        const studentCount = group.students.length;
+        const averageScore = studentCount > 0 ? group.totalScoreSum / studentCount : 0;
+        const backgroundColor = averageScore >= classAverageScore ? 'rgba(16, 185, 129, 0.7)' : 'rgba(239, 68, 68, 0.7)';
+        
+        bubbleData.push({
+            studentDetails: group.students, // เก็บข้อมูลนักเรียนทั้งหมดในกลุ่มสำหรับ Tooltip
+            label: `${studentCount} คน`, // Label ทั่วไปของกลุ่ม
             data: [{
-                x: stats.missingCount,
-                y: parseFloat(scores.gpa),
-                r: Math.max(scores.totalScore / 4, 5)
+                x: group.x,
+                y: group.y,
+                // ปรับขนาดฟองตามคะแนนเฉลี่ย และเพิ่มขนาดถ้ามีนักเรียนหลายคน
+                r: Math.max(averageScore / 4, 5) + (studentCount > 1 ? studentCount * 1.5 : 0) 
             }],
             backgroundColor: backgroundColor
-        };
+        });
     });
-    
+
     // --- ส่วนวาดกราฟ ---
     studentBubbleChartInstance = new Chart(bubbleCtx, {
         type: 'bubble',
@@ -920,25 +972,44 @@ const renderStudentBubbleChart = () => {
                 legend: {
                     display: false
                 },
+                // --- START: แก้ไข Tooltip และ Datalabels ---
                 tooltip: {
                     callbacks: {
+                        title: function(tooltipItems) {
+                            const item = tooltipItems[0];
+                            const gpa = item.parsed.y;
+                            const missing = item.parsed.x;
+                            return `GPA ${gpa.toFixed(1)}, ค้าง ${missing} งาน (${tooltipItems[0].dataset.studentDetails.length} คน)`;
+                        },
                         label: function(tooltipItem) {
-                            const dataset = tooltipItem.dataset;
-                            const dataPoint = dataset.data[tooltipItem.dataIndex];
-                            const studentName = dataset.label;
-                            const className = dataset.className;
-                            const gpa = dataPoint.y;
-                            const missing = dataPoint.x;
-                            const totalScore = (dataPoint.r * 4).toFixed(2);
-
-                            let finalLabel = studentName;
-                            if (bubbleViewScope === 'all') {
-                                finalLabel += ` (${className})`;
-                            }
-                            return `${finalLabel}: คะแนนรวม ${totalScore}, GPA ${gpa}, ค้าง ${missing} งาน`;
+                            const studentDetails = tooltipItem.dataset.studentDetails;
+                            // สร้าง array ของข้อความเพื่อแสดงผลหลายบรรทัด
+                            const labels = studentDetails.map(student => {
+                                let nameLabel = student.name;
+                                if (bubbleViewScope === 'all') {
+                                     nameLabel += ` (${student.className})`;
+                                }
+                                return `${nameLabel}: คะแนนรวม ${student.totalScore.toFixed(2)}`;
+                            });
+                            return labels;
                         }
                     }
+                },
+                datalabels: {
+                    color: '#ffffff',
+                    display: 'auto',
+                    font: {
+                        weight: 'bold',
+                        size: 12
+                    },
+                    formatter: function(value, context) {
+                        // ดึงจำนวนนักเรียนจากข้อมูลที่เราเก็บไว้
+                        const studentCount = context.dataset.studentDetails.length;
+                        // จะแสดงตัวเลขก็ต่อเมื่อมีนักเรียนมากกว่า 1 คนในจุดนั้น
+                        return studentCount > 1 ? studentCount : '';
+                    }
                 }
+                // --- END: แก้ไข Tooltip และ Datalabels ---
             },
             scales: {
                 y: {
@@ -954,7 +1025,6 @@ const renderStudentBubbleChart = () => {
         }
     });
 };
-// ===================================
 
 const clearDashboardContent = () => {
     // ทำลายกราฟเก่าทิ้ง เพื่อป้องกันการวาดทับกัน
@@ -1669,15 +1739,39 @@ if (currentView === 'dashboard') {
             const semesterData = getCurrentSemesterData();
             const isLinkedAndSecondSemester = classData.settings.linkSemesters && yearData.semesters.length >= 2 && semesterData.id === yearData.semesters[1].id;
 
+            // --- START: แก้ไขส่วนการเรียงข้อมูล ---
             let sortedStudents = [...classData.students];
             const studentSortOrder = state.sortConfig.studentSort;
-            if (studentSortOrder !== 'default') {
+            const columnSort = state.sortConfig.columnSort || {};
+
+            if (columnSort.assignmentId) {
+                // ตรรกะใหม่: เรียงตามคะแนนของงานที่เลือก
+                const getSortableScore = (studentId, assignmentId) => {
+                    const gradeKey = `${studentId}-${assignmentId}`;
+                    const progressScore = classData.progressScores ? classData.progressScores[gradeKey] : undefined;
+                    if (progressScore !== undefined && progressScore !== null && progressScore !== '') {
+                        // ให้คะแนนตัวเลขมีค่ามากกว่าเกรดตัวอักษรเพื่อการเรียงลำดับ
+                        return 5 + parseFloat(progressScore);
+                    }
+                    const grade = classData.grades[gradeKey] || 'none';
+                    return GRADE_SCORE_MAP[grade] || 0;
+                };
+
+                sortedStudents.sort((a, b) => {
+                    const scoreA = getSortableScore(a.id, columnSort.assignmentId);
+                    const scoreB = getSortableScore(b.id, columnSort.assignmentId);
+                    return columnSort.direction === 'asc' ? scoreA - scoreB : scoreB - scoreA;
+                });
+
+            } else if (studentSortOrder !== 'default') {
+                // ตรรกะเดิม: เรียงตามคะแนนรวม
                 sortedStudents.sort((a, b) => {
                     const scoreA = calculateScores(a.id).totalScore;
                     const scoreB = calculateScores(b.id).totalScore;
                     return studentSortOrder === 'asc' ? scoreA - scoreB : scoreB - scoreA;
                 });
             }
+            // --- END: แก้ไขส่วนการเรียงข้อมูล ---
 
             let sortedAssignments = [...classData.assignments];
             if (state.sortConfig.assignmentSort !== 'default') {
@@ -1719,15 +1813,29 @@ if (currentView === 'dashboard') {
             if (isLinkedAndSecondSemester && gpa) {
                 headerRow += '<th class="px-2 py-2 text-center align-middle whitespace-nowrap bg-blue-50">ผลการเรียนเฉลี่ย</th>';
             }
+            
+            // --- START: แก้ไข HTML ของหัวตารางงาน ---
             sortedAssignments.forEach((a, index) => { 
                 const originalIndex = classData.assignments.findIndex(orig => orig.id === a.id);
                 let bgClass = 'bg-gray-50';
                 if (isOverdue(a)) {
                     bgClass = 'overdue-header';
                 }
-                headerRow += `<th class="assignment-header p-1 text-center align-middle cursor-pointer ${bgClass}" data-assignment-id="${a.id}">
-                    <div class="square-box"><span>${originalIndex + 1}</span></div></th>`; 
+
+                const isSortingThisColumn = columnSort.assignmentId === a.id;
+                const sortIndicator = isSortingThisColumn ? (columnSort.direction === 'asc' ? '▲' : '▼') : '';
+
+                headerRow += `<th class="assignment-sort-header p-1 text-center align-middle cursor-pointer ${bgClass}" data-assignment-id="${a.id}" title="คลิกพื้นที่ว่างเพื่อเรียงคะแนน">
+                    <div class="flex items-center justify-center">
+                        <div class="square-box bulk-grade-trigger hover:bg-gray-200 rounded-md" title="คลิกที่ตัวเลขเพื่อให้คะแนน">
+                            <span>${originalIndex + 1}</span>
+                        </div>
+                        <span class="sort-indicator text-xs ml-1 w-2">${sortIndicator}</span>
+                    </div>
+                </th>`; 
             });
+            // --- END: แก้ไข HTML ของหัวตารางงาน ---
+
             headerRow += '<th class="px-2 py-2 text-center align-middle bg-gray-50">จัดการ</th></tr>';
             thead.innerHTML = headerRow;
             gradebookTable.appendChild(thead);
@@ -1736,7 +1844,7 @@ if (currentView === 'dashboard') {
             sortedStudents.forEach(student => {
                 const scores = calculateScores(student.id);
                 const isComplete = isSubmissionComplete(student.id);
-                const cursorClass = state.sortConfig.studentSort === 'default' ? 'cursor-grab' : '';
+                const cursorClass = state.sortConfig.studentSort === 'default' && !state.sortConfig.columnSort ? 'cursor-grab' : '';
                 const gpaZeroClass = scores.gpa === '0.0' ? 'gpa-zero-bg' : '';
                 
                 let averageGpaCell = '';
@@ -1753,7 +1861,7 @@ if (currentView === 'dashboard') {
                     averageGpaCell = `<td class="px-2 py-1 text-center font-bold text-lg text-blue-700 align-middle bg-blue-50 ${avgGpa === '0.0' ? 'zero-score' : ''}">${avgGpa}</td>`;
                 }
 
-                let bodyRow = `<tr class="student-row bg-white border-b hover:bg-gray-50 ${isComplete ? 'perfect-submission' : ''} ${cursorClass}" draggable="true" data-student-id="${student.id}">`;
+                let bodyRow = `<tr class="student-row bg-white border-b hover:bg-gray-50 ${isComplete ? 'perfect-submission' : ''} ${cursorClass}" draggable="${cursorClass ? 'true' : 'false'}" data-student-id="${student.id}">`;
                 bodyRow += `<td class="student-name-cell px-2 py-1 font-medium text-gray-900 whitespace-nowrap bg-white align-middle cursor-pointer hover:bg-blue-50 ${gpaZeroClass}" data-student-id="${student.id}">${student.name}</td>`;
                 if (assignmentScore) bodyRow += `<td class="px-2 py-1 text-center font-semibold text-blue-600 align-middle ${scores.assignmentScore === 0 ? 'zero-score' : ''}">${scores.assignmentScore}</td>`;
                 if (midterm) bodyRow += `<td class="px-2 py-1 text-center align-middle"><input type="number" class="w-12 text-center bg-gray-100 rounded p-1 ${scores.midterm === 0 ? 'zero-score' : ''}" data-student-id="${student.id}" data-exam-type="midterm" value="${scores.midterm}" min="0" max="${classData.scoreConfig.midterm}"></td>`;
@@ -2864,11 +2972,32 @@ if (filters.gpaMax !== '' && parseFloat(scores.gpa) > parseFloat(filters.gpaMax)
                     classData.specialScores[`${studentId}-${columnId}`] = value;
                 });
             }));
-            document.querySelectorAll('.assignment-header').forEach(header => {
+            
+            // --- START: แก้ไขส่วน Event Listener ของหัวตารางงาน ---
+            // Listener ใหม่สำหรับเรียงคะแนน
+            document.querySelectorAll('.assignment-sort-header').forEach(header => {
+                header.addEventListener('click', (e) => {
+                    // ถ้าคลิกโดนตัวเลข (สำหรับเปิด modal) ให้ไม่ต้องทำอะไร
+                    if (e.target.closest('.bulk-grade-trigger')) {
+                        return;
+                    }
+                    const assignmentId = parseInt(header.dataset.assignmentId);
+                    handleSortByAssignment(assignmentId);
+                });
+                // Listener สำหรับ Tooltip ยังคงเดิม
                 header.addEventListener('mouseenter', showTooltip);
                 header.addEventListener('mouseleave', hideTooltip);
-                header.addEventListener('click', (e) => handleAssignmentHeaderClick(parseInt(e.currentTarget.dataset.assignmentId)));
             });
+
+            // Listener ใหม่สำหรับเปิดหน้าต่างให้คะแนน (คลิกที่ตัวเลข)
+            document.querySelectorAll('.bulk-grade-trigger').forEach(trigger => {
+                trigger.addEventListener('click', (e) => {
+                    const assignmentId = parseInt(e.currentTarget.closest('.assignment-sort-header').dataset.assignmentId);
+                    handleAssignmentHeaderClick(assignmentId); // เรียกฟังก์ชันเปิด modal เดิม
+                });
+            });
+            // --- END: แก้ไขส่วน Event Listener ---
+            
             document.querySelectorAll('.edit-assignment-btn').forEach(btn => btn.addEventListener('click', (e) => handleEditAssignment(e.currentTarget.dataset.assignmentId)));
             document.querySelectorAll('.remove-assignment-btn').forEach(btn => btn.addEventListener('click', (e) => handleRemoveAssignment(e.currentTarget.dataset.assignmentId)));
             document.querySelectorAll('.edit-special-column-btn').forEach(btn => btn.addEventListener('click', (e) => handleEditSpecialColumn(e.currentTarget.dataset.columnId)));
@@ -2878,6 +3007,9 @@ if (filters.gpaMax !== '' && parseFloat(scores.gpa) > parseFloat(filters.gpaMax)
             if (totalScoreHeader) {
                 totalScoreHeader.addEventListener('click', () => {
                     commitChange(() => {
+                        // --- เพิ่มเงื่อนไข: รีเซ็ตการเรียงแบบคอลัมน์เมื่อกลับมาเรียงคะแนนรวม ---
+                        if (state.sortConfig.columnSort) delete state.sortConfig.columnSort;
+                        // ---
                         const currentSort = state.sortConfig.studentSort;
                         if (currentSort === 'default') state.sortConfig.studentSort = 'desc';
                         else if (currentSort === 'desc') state.sortConfig.studentSort = 'asc';
@@ -2888,7 +3020,7 @@ if (filters.gpaMax !== '' && parseFloat(scores.gpa) > parseFloat(filters.gpaMax)
 
             document.querySelectorAll('.student-row').forEach(row => {
                 row.addEventListener('dragstart', (e) => {
-                    if (state.sortConfig.studentSort !== 'default') {
+                    if (state.sortConfig.studentSort !== 'default' || state.sortConfig.columnSort) {
                         e.preventDefault();
                         showToast('กรุณาเปลี่ยนเป็นโหมดเรียงตามลำดับเดิมเพื่อย้ายนักเรียน', true);
                         return;
