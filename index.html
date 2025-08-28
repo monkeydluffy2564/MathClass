@@ -253,6 +253,19 @@ body.fullscreen-mode .icon-exit-fullscreen {
     display: block;
 }
 /* --- END: Fullscreen Mode Styles (Complete Replacement) --- */
+
+    /* เพิ่ม CSS สำหรับปุ่มที่ Active (ย่อขนาด) */
+    .view-btn.active {
+        transform: scale(0.95);
+        box-shadow: 0 0 10px rgba(0,0,0,0.3) inset;
+    }
+
+    /* เพิ่ม CSS สำหรับปุ่มที่ถูกปิดใช้งาน (Disabled) */
+    .view-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: scale(0.95); /* ทำให้ปุ่มที่ disabled ยังคงย่ออยู่ */
+    }
 		
     </style>
 </head>
@@ -267,6 +280,10 @@ body.fullscreen-mode .icon-exit-fullscreen {
                 <div id="contextHeader" class="flex flex-wrap items-center gap-2 text-gray-500">
                     <!-- Year and Semester selectors will be rendered here -->
                 </div>
+				<div id="dashboardScopeToggle" class="hidden mt-2 flex rounded-lg bg-gray-200 p-1 w-fit">
+    <button id="dashboardScopeSingleBtn" class="px-3 py-1 text-sm font-semibold rounded-md">เฉพาะห้องนี้</button>
+    <button id="dashboardScopeAllBtn" class="px-3 py-1 text-sm font-semibold rounded-md">รวมทุกห้อง</button>
+</div>
             </div>
             <div id="topRightButtons" class="flex items-center gap-2 self-end sm:self-center">
                 <!-- SYNC STATUS INDICATOR -->
@@ -303,12 +320,13 @@ body.fullscreen-mode .icon-exit-fullscreen {
                 <!-- Class tabs will be rendered here -->
             </div>
             <div id="quickActionsContainer" class="flex gap-2 w-full sm:w-auto">
-			<button id="dashboardAllBtn" class="flex-1 sm:flex-none bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg shadow">ภาพรวมทั้งหมด</button>
-                 <button id="dashboardBtn" class="flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow">ภาพรวม</button>
-				 <button id="bubbleViewBtn" class="flex-1 sm:flex-none bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded-lg shadow">Bubble View</button>
-                 <button id="addAssignmentBtn" class="flex-1 sm:flex-none bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow">เพิ่มงาน</button>
-                 <button id="viewSummaryBtn" class="flex-1 sm:flex-none bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow">ดูสรุปงาน</button>
-            </div>
+    <button id="summaryViewBtn" class="view-btn flex-1 sm:flex-none bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow transition-transform duration-200">ภาพรวม</button>
+    <button id="bubbleViewBtn" class="view-btn flex-1 sm:flex-none bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded-lg shadow transition-transform duration-200">Bubble View</button>
+    <button id="gradebookViewBtn" class="view-btn flex-1 sm:flex-none bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg shadow transition-transform duration-200">ตารางคะแนน</button>
+    
+    <button id="addAssignmentBtn" class="flex-1 sm:flex-none bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow">เพิ่มงาน</button>
+    <button id="viewSummaryBtn" class="flex-1 sm:flex-none bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow">ดูสรุปงาน</button>
+</div>
         </div>
 
         <!-- Search Bar -->
@@ -739,7 +757,6 @@ body.fullscreen-mode .icon-exit-fullscreen {
         const undoBtn = document.getElementById('undoBtn');
         const redoBtn = document.getElementById('redoBtn');
         const deleteClassBtn = document.getElementById('deleteClassBtn');
-        const dashboardBtn = document.getElementById('dashboardBtn');
         const gradebookView = document.getElementById('gradebookView');
         const dashboardView = document.getElementById('dashboardView');
         const studentReportView = document.getElementById('studentReportView');
@@ -747,6 +764,11 @@ body.fullscreen-mode .icon-exit-fullscreen {
         const exportDashboardBtn = document.getElementById('exportDashboardBtn');
         const searchInput = document.getElementById('searchInput');
 		const fullscreenBtn = document.getElementById('fullscreenBtn');
+		const summaryViewBtn = document.getElementById('summaryViewBtn');
+const gradebookViewBtn = document.getElementById('gradebookViewBtn');
+const dashboardScopeToggle = document.getElementById('dashboardScopeToggle');
+const dashboardScopeSingleBtn = document.getElementById('dashboardScopeSingleBtn');
+const dashboardScopeAllBtn = document.getElementById('dashboardScopeAllBtn');
 		const mainContent = document.getElementById('mainContent');
 		
 		const bubbleViewBtn = document.getElementById('bubbleViewBtn');
@@ -762,8 +784,9 @@ const bubbleScopeAllBtn = document.getElementById('bubbleScopeAllBtn');   // <--
         
         // --- APP STATE ---
         let state = {};
-		let dashboardMode = 'single';
-		let currentDashboardSubView = 'summary'; // 'summary' or 'bubbles'
+		let dashboardScope = 'single'; // 'single' or 'overall' เพิ่ม state ใหม่
+let currentView = 'gradebook'; // 'gradebook', 'dashboard', 'studentReport', 'warehouse' แก้ไขค่าเริ่มต้น
+let currentDashboardSubView = 'summary'; // 'summary' or 'bubbles'
 		let bubbleViewScope = 'single'; // 'single' or 'all'  <-- เพิ่มบรรทัดนี้ครับ
         let onInputConfirm = null;
         let onAssignmentConfirm = null;
@@ -771,7 +794,6 @@ const bubbleScopeAllBtn = document.getElementById('bubbleScopeAllBtn');   // <--
         let currentEdit = { studentId: null, assignmentId: null };
         let draggedTab = null;
         let draggedStudentId = null;
-        let currentView = 'gradebook'; // 'gradebook', 'dashboard', 'studentReport', 'warehouse'
         let currentWarehouseView = 'failed'; // 'failed', 'resolved'
         let submissionChartInstance = null;
         let performanceChartInstance = null;
@@ -1501,94 +1523,126 @@ if (allTopPerformers.length > 0) {
 
         // --- MAIN RENDERING LOGIC ---
         const render = () => {
-            if (!state || !state.mainTitle) return;
-            mainTitle.textContent = state.mainTitle;
-            
-            const topRightButtons = document.getElementById('topRightButtons');
-            const quickActionsDiv = document.getElementById('quickActionsContainer');
-            const searchBarDiv = document.getElementById('searchBarContainer');
+    if (!state || !state.mainTitle) return;
+    mainTitle.textContent = state.mainTitle;
 
-            gradebookView.classList.add('hidden');
-            dashboardView.classList.add('hidden');
-            studentReportView.classList.add('hidden');
-            warehouseView.classList.add('hidden');
-            classTabsContainer.classList.add('hidden');
-            quickActionsDiv.classList.add('hidden');
-            searchBarDiv.classList.add('hidden');
-            topRightButtons.classList.add('hidden');
+    const topRightButtons = document.getElementById('topRightButtons');
+    const quickActionsDiv = document.getElementById('quickActionsContainer');
+    const searchBarDiv = document.getElementById('searchBarContainer');
 
-            renderContextSelectors();
+    gradebookView.classList.add('hidden');
+    dashboardView.classList.add('hidden');
+    studentReportView.classList.add('hidden');
+    warehouseView.classList.add('hidden');
+    classTabsContainer.classList.add('hidden');
+    quickActionsDiv.classList.add('hidden');
+    searchBarDiv.classList.add('hidden');
+    topRightButtons.classList.add('hidden');
 
-            const semesterData = getCurrentSemesterData();
-            const hasData = semesterData && semesterData.classes.length > 0;
+    renderContextSelectors();
 
-            if (currentView === 'warehouse') {
-                warehouseView.classList.remove('hidden');
-                searchBarDiv.classList.remove('hidden');
-                searchInput.placeholder = "ค้นหาในคลัง...";
-                topRightButtons.classList.remove('hidden');
-                topRightButtons.querySelector('#settingsBtn').classList.add('hidden');
-                renderWarehouseView();
-            } else if (currentView === 'studentReport' && hasData) {
-                studentReportView.classList.remove('hidden');
-                renderStudentReport(state.currentStudentIdForReport);
-            } else if (hasData) {
-                classTabsContainer.classList.remove('hidden');
-                quickActionsDiv.classList.remove('hidden');
-                searchBarDiv.classList.remove('hidden');
-                topRightButtons.classList.remove('hidden');
-                topRightButtons.querySelector('#settingsBtn').classList.remove('hidden');
-                searchInput.placeholder = "ค้นหาชื่อนักเรียน...";
-                renderClassTabs();
+    const semesterData = getCurrentSemesterData();
+    const hasData = semesterData && semesterData.classes.length > 0;
 
-                // ...
-if (currentView === 'dashboard') {
-    dashboardView.classList.remove('hidden');
-    dashboardBtn.textContent = 'ตารางคะแนน';
+    // ฟังก์ชันสำหรับอัปเดตสถานะปุ่ม (Active/Disabled)
+    const updateViewButtonStates = () => {
+        // รีเซ็ตสถานะทั้งหมดก่อน
+        [summaryViewBtn, bubbleViewBtn, gradebookViewBtn].forEach(btn => {
+            btn.classList.remove('active');
+            btn.disabled = false;
+        });
 
-    const dashboardContent = document.getElementById('dashboardContent');
-    const bubbleDashboardContent = document.getElementById('bubbleDashboardContent');
+        // แสดง/ซ่อนตัวเลือกของหน้าภาพรวม
+        dashboardScopeToggle.classList.add('hidden');
 
-    if (currentDashboardSubView === 'bubbles') { // <-- ถ้า state เป็น bubbles
-        dashboardContent.classList.add('hidden');
-        bubbleDashboardContent.classList.remove('hidden');
-        renderStudentBubbleChart(); // <-- เรียกฟังก์ชันวาด Bubble Chart
-    } else { // <-- ถ้าเป็น summary หรือ อื่นๆ
-        dashboardContent.classList.remove('hidden');
-        bubbleDashboardContent.classList.add('hidden');
-        if (dashboardMode === 'overall') {
-            renderAllClassesDashboard();
-        } else {
-            renderDashboard();
+        // ตั้งค่าสถานะตาม View ปัจจุบัน
+        if (currentView === 'gradebook') {
+            gradebookViewBtn.classList.add('active');
+            gradebookViewBtn.disabled = true;
+        } else if (currentView === 'dashboard') {
+            if (currentDashboardSubView === 'summary') {
+                summaryViewBtn.classList.add('active');
+                summaryViewBtn.disabled = true;
+                // แสดงตัวเลือก "เฉพาะห้องนี้/รวมทุกห้อง"
+                dashboardScopeToggle.classList.remove('hidden');
+                // อัปเดต UI ของปุ่มตัวเลือก
+                dashboardScopeSingleBtn.classList.toggle('toggle-btn-active', dashboardScope === 'single');
+                dashboardScopeSingleBtn.classList.toggle('toggle-btn-inactive', dashboardScope !== 'single');
+                dashboardScopeAllBtn.classList.toggle('toggle-btn-active', dashboardScope === 'overall');
+                dashboardScopeAllBtn.classList.toggle('toggle-btn-inactive', dashboardScope !== 'overall');
+
+            } else if (currentDashboardSubView === 'bubbles') {
+                bubbleViewBtn.classList.add('active');
+                bubbleViewBtn.disabled = true;
+            }
         }
+    };
+
+    if (currentView === 'warehouse') {
+        warehouseView.classList.remove('hidden');
+        searchBarDiv.classList.remove('hidden');
+        searchInput.placeholder = "ค้นหาในคลัง...";
+        topRightButtons.classList.remove('hidden');
+        topRightButtons.querySelector('#settingsBtn').classList.add('hidden');
+        renderWarehouseView();
+    } else if (currentView === 'studentReport' && hasData) {
+        studentReportView.classList.remove('hidden');
+        renderStudentReport(state.currentStudentIdForReport);
+    } else if (hasData) {
+        classTabsContainer.classList.remove('hidden');
+        quickActionsDiv.classList.remove('hidden');
+        searchBarDiv.classList.remove('hidden');
+        topRightButtons.classList.remove('hidden');
+        topRightButtons.querySelector('#settingsBtn').classList.remove('hidden');
+        searchInput.placeholder = "ค้นหาชื่อนักเรียน...";
+        renderClassTabs();
+
+        // ตรรกะการแสดงผลตาม View
+        if (currentView === 'gradebook') {
+            gradebookView.classList.remove('hidden');
+            renderTable();
+        } else if (currentView === 'dashboard') {
+            dashboardView.classList.remove('hidden');
+            const dashboardContent = document.getElementById('dashboardContent');
+            const bubbleDashboardContent = document.getElementById('bubbleDashboardContent');
+
+            if (currentDashboardSubView === 'bubbles') {
+                dashboardContent.classList.add('hidden');
+                bubbleDashboardContent.classList.remove('hidden');
+                renderStudentBubbleChart();
+            } else { // subview is 'summary'
+                dashboardContent.classList.remove('hidden');
+                bubbleDashboardContent.classList.add('hidden');
+                // ใช้ state 'dashboardScope' ที่เราสร้างขึ้นใหม่
+                if (dashboardScope === 'overall') {
+                    renderAllClassesDashboard();
+                } else { // 'single'
+                    renderDashboard();
+                }
+            }
+        }
+    } else {
+        gradebookView.classList.remove('hidden');
+        topRightButtons.classList.remove('hidden');
+        gradebookView.innerHTML = `<div class="text-center p-10 bg-white rounded-lg shadow-md">
+            <h2 class="text-xl font-semibold text-gray-700">ไม่มีข้อมูลสำหรับภาคเรียนนี้</h2>
+            <p class="text-gray-500 mt-2">กรุณาเลือกปีการศึกษาและภาคเรียน หรือไปที่ 'ตั้งค่า' เพื่อเพิ่มข้อมูลใหม่</p>
+        </div>`;
     }
-} else { 
-    gradebookView.classList.remove('hidden');
-    dashboardBtn.textContent = 'ภาพรวม'; // <<< เพิ่มบรรทัดนี้
-    renderTable();
-}
-//...
-            } else {
-                gradebookView.classList.remove('hidden');
-                topRightButtons.classList.remove('hidden');
-                gradebookView.innerHTML = `<div class="text-center p-10 bg-white rounded-lg shadow-md">
-                    <h2 class="text-xl font-semibold text-gray-700">ไม่มีข้อมูลสำหรับภาคเรียนนี้</h2>
-                    <p class="text-gray-500 mt-2">กรุณาเลือกปีการศึกษาและภาคเรียน หรือไปที่ 'ตั้งค่า' เพื่อเพิ่มข้อมูลใหม่</p>
-                </div>`;
-            }
 
-            updateToggleButtons();
-            updatePanelVisibility();
-            const currentClassData = getCurrentClassData();
-            if (currentClassData && currentClassData.scoreConfig) {
-                assignmentScoreInput.value = currentClassData.scoreConfig.assignment;
-            }
-            if (deleteClassBtn) {
-                deleteClassBtn.disabled = !semesterData || semesterData.classes.length <= 1;
-            }
-        };
+    updateToggleButtons();
+    updatePanelVisibility();
+    const currentClassData = getCurrentClassData();
+    if (currentClassData && currentClassData.scoreConfig) {
+        assignmentScoreInput.value = currentClassData.scoreConfig.assignment;
+    }
+    if (deleteClassBtn) {
+        deleteClassBtn.disabled = !semesterData || semesterData.classes.length <= 1;
+    }
+    
+    updateViewButtonStates(); // เรียกใช้ฟังก์ชันอัปเดตสถานะปุ่ม
+};
 
-        
         const renderContextSelectors = () => {
             contextHeader.innerHTML = '';
 
@@ -4022,42 +4076,51 @@ if (atRiskSlider && atRiskLabel) {
             showToast('ล้างตัวกรองแล้ว');
         });
 
-// เพิ่มตัวแปรสำหรับปุ่มใหม่
-const dashboardAllBtn = document.getElementById('dashboardAllBtn');
+// --- START: เพิ่ม Event Listeners สำหรับปุ่มควบคุมมุมมองใหม่ ---
 
-// เพิ่ม Event Listener ให้ปุ่มใหม่
-dashboardBtn.addEventListener('click', () => {
-    // ตรวจสอบว่าตอนนี้อยู่ที่หน้าไหน
-    if (currentView === 'gradebook') {
-        // ถ้าอยู่หน้าตาราง ให้ไปหน้าภาพรวม (รายห้อง)
+// ปุ่ม "ภาพรวม"
+summaryViewBtn.addEventListener('click', () => {
+    if (currentView !== 'dashboard' || currentDashboardSubView !== 'summary') {
         currentView = 'dashboard';
-        dashboardMode = 'single';
-    } else {
-        // ถ้าอยู่หน้าภาพรวม (ใดๆ ก็ตาม) ให้กลับไปหน้าตาราง
-        currentView = 'gradebook';
+        currentDashboardSubView = 'summary';
+        render();
     }
-    render(); // สั่งให้วาดหน้าจอใหม่
 });
 
-// Listener ของปุ่ม "ภาพรวมทั้งหมด"
-dashboardAllBtn.addEventListener('click', () => {
-    currentView = 'dashboard';
-    dashboardMode = 'overall'; // << กำหนดสถานะเป็น 'overall'
-    render(); // << เรียก render() หลัก
-});
-
-bubbleViewBtn.addEventListener('click', () => { 
+// ปุ่ม "Bubble View" (ปรับปรุงเล็กน้อย)
+bubbleViewBtn.addEventListener('click', () => {
     if (currentView !== 'dashboard' || currentDashboardSubView !== 'bubbles') {
         currentView = 'dashboard';
         currentDashboardSubView = 'bubbles';
-    } else {
-        // ถ้ากดซ้ำ ให้กลับไปหน้า dashboard ปกติ
-        currentDashboardSubView = 'summary';
+        render();
     }
-    render();
 });
 
-// === เพิ่ม Event Listeners สองอันนี้เข้าไป ===
+// ปุ่ม "ตารางคะแนน"
+gradebookViewBtn.addEventListener('click', () => {
+    if (currentView !== 'gradebook') {
+        currentView = 'gradebook';
+        // ไม่ต้องตั้งค่า currentDashboardSubView เพราะไม่ได้ใช้ในหน้าตาราง
+        render();
+    }
+});
+
+// ปุ่มตัวเลือกของหน้าภาพรวม "เฉพาะห้องนี้"
+dashboardScopeSingleBtn.addEventListener('click', () => {
+    if (dashboardScope !== 'single') {
+        dashboardScope = 'single';
+        render(); // วาดหน้าจอใหม่ด้วยข้อมูลเฉพาะห้อง
+    }
+});
+
+// ปุ่มตัวเลือกของหน้าภาพรวม "รวมทุกห้อง"
+dashboardScopeAllBtn.addEventListener('click', () => {
+    if (dashboardScope !== 'overall') {
+        dashboardScope = 'overall';
+        render(); // วาดหน้าจอใหม่ด้วยข้อมูลรวมทุกห้อง
+    }
+});
+
 bubbleScopeSingleBtn.addEventListener('click', () => {
     if (bubbleViewScope !== 'single') {
         bubbleViewScope = 'single';
@@ -4071,6 +4134,7 @@ bubbleScopeAllBtn.addEventListener('click', () => {
         render(); // สั่งให้วาดหน้าจอใหม่
     }
 });
+// --- END: เพิ่ม Event Listeners สำหรับปุ่มควบคุมมุมมองใหม่ ---
         
         document.getElementById('viewStudentReportBtn').addEventListener('click', () => {
             const studentId = parseInt(document.getElementById('studentGradeModalTitle').dataset.studentId);
