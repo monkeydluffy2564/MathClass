@@ -1985,7 +1985,21 @@ if (allTopPerformers.length > 0) {
             });
 
             let actionRow = `<tr class="bg-gray-50 h-[38px]"><td class="sticky left-0 bg-gray-50 px-2 py-1"></td>`;
-            if(assignmentScore) actionRow += '<td></td>'; if(midterm) actionRow += '<td></td>'; if(final) actionRow += '<td></td>'; if(midYear) actionRow += '<td></td>'; if(yearEnd) actionRow += '<td></td>';
+            if(assignmentScore) actionRow += '<td></td>'; 
+            
+            // --- START: MODIFIED CODE ---
+            const createImportCell = (examType) => `
+                <td class="p-1 text-center align-middle">
+                    <button class="import-exam-btn text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 font-bold py-1 px-2 rounded" data-exam-type="${examType}">Import</button>
+                    <input type="file" class="hidden import-exam-file-input" data-exam-type="${examType}" accept=".txt">
+                </td>`;
+
+            if(midterm) actionRow += createImportCell('midterm'); else if (midterm) actionRow += '<td></td>';
+            if(final) actionRow += createImportCell('final'); else if (final) actionRow += '<td></td>';
+            if(midYear) actionRow += createImportCell('midYear'); else if (midYear) actionRow += '<td></td>';
+            if(yearEnd) actionRow += createImportCell('yearEnd'); else if (yearEnd) actionRow += '<td></td>';
+            // --- END: MODIFIED CODE ---
+
             if(notebook) actionRow += '<td></td>'; if(textbook) actionRow += '<td></td>'; if(workbook) actionRow += '<td></td>'; if(special) actionRow += '<td></td>';
             
             classData.specialColumns.forEach(col => {
@@ -3165,6 +3179,23 @@ if (filters.gpaMax !== '' && parseFloat(scores.gpa) > parseFloat(filters.gpaMax)
                     });
                 });
             });
+			
+			// --- START: ADDED CODE FOR EXAM IMPORT ---
+            document.querySelectorAll('.import-exam-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    // เมื่อคลิกปุ่ม ให้ไป trigger input ที่ซ่อนอยู่
+                    e.currentTarget.nextElementSibling.click();
+                });
+            });
+
+            document.querySelectorAll('.import-exam-file-input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    // เมื่อมีการเลือกไฟล์ ให้เรียกฟังก์ชันจัดการ
+                    const examType = e.currentTarget.dataset.examType;
+                    handleExamScoreImport(e, examType);
+                });
+            });
+            // --- END: ADDED CODE FOR EXAM IMPORT ---
         }
         
         // --- DRAG & DROP HANDLERS ---
@@ -3497,6 +3528,81 @@ if (filters.gpaMax !== '' && parseFloat(scores.gpa) > parseFloat(filters.gpaMax)
                 }
             };
             reader.readAsArrayBuffer(file);
+        };
+		
+		const handleExamScoreImport = (event, examType) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const classData = getCurrentClassData();
+                    if (!classData) return;
+
+                    // 1. นำข้อมูลนักเรียนมาเรียงลำดับตามที่แสดงผลในตารางปัจจุบัน
+                    let sortedStudents = [...classData.students];
+                    const studentSortOrder = state.sortConfig.studentSort;
+                    const columnSort = state.sortConfig.columnSort || {};
+
+                    if (columnSort.assignmentId) {
+                        const getSortableScore = (studentId, assignmentId) => {
+                            const gradeKey = `${studentId}-${assignmentId}`;
+                            const progressScore = classData.progressScores ? classData.progressScores[gradeKey] : undefined;
+                            if (progressScore !== undefined && progressScore !== null && progressScore !== '') {
+                                return 5 + parseFloat(progressScore);
+                            }
+                            const grade = classData.grades[gradeKey] || 'none';
+                            return GRADE_SCORE_MAP[grade] || 0;
+                        };
+                        sortedStudents.sort((a, b) => {
+                            const scoreA = getSortableScore(a.id, columnSort.assignmentId);
+                            const scoreB = getSortableScore(b.id, columnSort.assignmentId);
+                            return columnSort.direction === 'asc' ? scoreA - scoreB : scoreB - scoreA;
+                        });
+                    } else if (studentSortOrder !== 'default') {
+                        sortedStudents.sort((a, b) => {
+                            const scoreA = calculateScores(a.id).totalScore;
+                            const scoreB = calculateScores(b.id).totalScore;
+                            return studentSortOrder === 'asc' ? scoreA - scoreB : scoreB - scoreA;
+                        });
+                    }
+                    
+                    // 2. อ่านคะแนนจากไฟล์
+                    const text = e.target.result;
+                    const scores = text.split('\n').map(line => line.trim()).filter(line => line !== '');
+
+                    // 3. ตรวจสอบจำนวนว่าตรงกันหรือไม่
+                    if (scores.length !== sortedStudents.length) {
+                        showToast(`จำนวนคะแนนในไฟล์ (${scores.length}) ไม่ตรงกับจำนวนนักเรียน (${sortedStudents.length})`, true);
+                        return;
+                    }
+
+                    // 4. อัปเดตคะแนน
+                    commitChange(() => {
+                        const currentClassData = getCurrentClassData();
+                        sortedStudents.forEach((student, index) => {
+                            const score = parseInt(scores[index], 10);
+                            if (!isNaN(score)) {
+                                if (!currentClassData.examScores[student.id]) {
+                                    currentClassData.examScores[student.id] = { midterm: 0, final: 0, midYear: 0, yearEnd: 0, special: 0 };
+                                }
+                                currentClassData.examScores[student.id][examType] = score;
+                            }
+                        });
+                    });
+
+                    showToast(`นำเข้าคะแนนสำหรับ '${examType}' สำเร็จ!`);
+
+                } catch (error) {
+                    console.error("Error importing exam scores:", error);
+                    showToast('เกิดข้อผิดพลาดในการนำเข้าไฟล์', true);
+                } finally {
+                    // ล้างค่าใน input เพื่อให้สามารถเลือกไฟล์เดิมซ้ำได้
+                    event.target.value = '';
+                }
+            };
+            reader.readAsText(file);
         };
 
         const handleExportDashboard = () => {
